@@ -212,6 +212,30 @@ namespace Demo
             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
             ovrListener->triggerWriteTexture();
         }
+        else if(arg.keysym.scancode == SDL_SCANCODE_V)
+        {
+            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            float imgScale = ovrListener->getImgScale();
+            ovrListener->setImgScale(imgScale - 0.05);
+        }
+        else if(arg.keysym.scancode == SDL_SCANCODE_B)
+        {
+            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            float imgScale = ovrListener->getImgScale();
+            ovrListener->setImgScale(imgScale + 0.05);
+        }
+        else if(arg.keysym.scancode == SDL_SCANCODE_X)
+        {
+            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            ovrListener->setInputType(
+                OpenVRCompositorListener::VIDEO);
+        }
+        else if(arg.keysym.scancode == SDL_SCANCODE_Y)
+        {
+            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            ovrListener->setInputType(
+                OpenVRCompositorListener::IMG_SERIES);
+        }
         else
         {
             bool handledEvent = false;
