@@ -111,16 +111,19 @@ namespace Demo
         virtual Ogre::CompositorWorkspace* setupCompositor();
 
 
-        static std::string GetTrackedDeviceString( vr::TrackedDeviceIndex_t unDevice,
-                                                   vr::TrackedDeviceProperty prop,
-                                                   vr::TrackedPropertyError *peError = NULL );
+        static std::string GetTrackedDeviceString(
+            vr::TrackedDeviceIndex_t unDevice,
+            vr::TrackedDeviceProperty prop,
+            vr::TrackedPropertyError *peError = NULL );
         void initOpenVR(void);
         void initCompositorVR(void);
 //         void createHiddenAreaMeshVR(void);
 
     public:
-        SVRGraphicsSystem( GameState *gameState,
-                        Ogre::ColourValue backgroundColour = Ogre::ColourValue( 0.2f, 0.4f, 0.6f )
+        SVRGraphicsSystem(
+            GameState *gameState,
+            bool askForConfig,
+            Ogre::ColourValue backgroundColour = Ogre::ColourValue( 0.2f, 0.4f, 0.6f )
         );
         ~SVRGraphicsSystem();
 
@@ -136,7 +139,7 @@ namespace Demo
         SdlInputHandler* getInputHandler(void) { return mInputHandler; }
 #endif
 
-                void setQuit(void)                                      { mQuit = true; }
+        void setQuit(void)                                      { mQuit = true; }
         bool getQuit(void) const                                { return mQuit; }
 
         float getAccumTimeSinceLastLogicFrame(void) const       { return mAccumTimeSinceLastLogicFrame; }

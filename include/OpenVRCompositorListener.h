@@ -157,10 +157,10 @@ namespace Demo
         //left_left, left_right right_left right_right
         //left_top left_bottom  right_top right_bottom
         struct Align {
-            size_t leftLeft;
-            size_t leftTop;
-            size_t rightLeft;
-            size_t rightTop;
+            int leftLeft;
+            int leftTop;
+            int rightLeft;
+            int rightTop;
         } mAlign;
         //of vr height
         float mImgScale;
@@ -169,7 +169,7 @@ namespace Demo
         size_t mImgWidthOrig;
         size_t mImgHeightResize;
         size_t mImgWidthResize;
-        void calcAlign();
+        bool calcAlign();
 
         bool fillTexture(void);
         cv::VideoCapture mCapture;
@@ -183,11 +183,12 @@ namespace Demo
 
         InputType mInputType;
     public:
-        OpenVRCompositorListener( vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor,
-                                  vr::IVROverlay *vrCompositor2D,
-                                  Ogre::TextureGpu *vrTexture, Ogre::Root *root,
-                                  Ogre::CompositorWorkspace *workspace,
-                                  Ogre::Camera *camera, Ogre::Camera *cullCamera );
+        OpenVRCompositorListener(
+            vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor,
+            vr::IVROverlay *vrCompositor2D,
+            Ogre::TextureGpu *vrTexture, Ogre::Root *root,
+            Ogre::CompositorWorkspace *workspace,
+            Ogre::Camera *camera, Ogre::Camera *cullCamera );
         virtual ~OpenVRCompositorListener();
 
         virtual bool frameStarted( const Ogre::FrameEvent& evt );

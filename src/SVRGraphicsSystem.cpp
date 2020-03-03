@@ -47,7 +47,9 @@
 
 namespace Demo {
     SVRGraphicsSystem::SVRGraphicsSystem(
-            GameState *gameState,                                    Ogre::ColourValue backgroundColour ) :
+            GameState *gameState,
+            bool askForConfig,
+            Ogre::ColourValue backgroundColour) :
         BaseSystem( gameState ),
         mLogicSystem( 0 ),
     #if OGRE_USE_SDL2
@@ -64,7 +66,7 @@ namespace Demo {
         mAccumTimeSinceLastLogicFrame( 0 ),
 //         mCurrentTransformIdx( 0 ),
         mQuit( false ),
-        mAlwaysAskForConfig( true ),
+        mAlwaysAskForConfig( askForConfig ),
         mBackgroundColour( backgroundColour ),
         
         mHMD( 0 ),
@@ -157,11 +159,10 @@ namespace Demo {
             // we know that the height starts 3 characters after the width and goes until the next space
             Ogre::String::size_type heightEnd = opt->second.currentValue.find(' ', widthEnd+3);
             // Now we can parse out the values
-            width   = Ogre::StringConverter::parseInt( opt->second.currentValue.substr( 0, widthEnd ) );
-            height  = Ogre::StringConverter::parseInt( opt->second.currentValue.substr(
-                                                           widthEnd+3, heightEnd ) );
+//             width   = Ogre::StringConverter::parseInt( opt->second.currentValue.substr( 0, widthEnd ) );
+//             height  = Ogre::StringConverter::parseInt( opt->second.currentValue.substr(
+//                                                            widthEnd+3, heightEnd ) );
         }
-
         Ogre::NameValuePairList params;
         bool fullscreen = Ogre::StringConverter::parseBool( cfgOpts["Full Screen"].currentValue );
     #if OGRE_USE_SDL2

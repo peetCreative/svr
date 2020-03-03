@@ -23,7 +23,9 @@
 using namespace Demo;
 
 void createSystems( SVRGameState **outGraphicsGameState,
-                    SVRGraphicsSystem **outGraphicsSystem);
+                    SVRGraphicsSystem **outGraphicsSystem,
+                    bool configDialog
+                  );
 void destroySystems( SVRGameState *graphicsGameState,
                      SVRGraphicsSystem *graphicsSystem);
 const char* getWindowTitle(void);
@@ -34,7 +36,10 @@ int main( int argc, const char *argv[] )
     SVRGameState *graphicsGameState = 0;
     SVRGraphicsSystem *graphicsSystem = 0;
 
-    createSystems( &graphicsGameState, &graphicsSystem );
+    bool config_dialog = argc >= 2 && std::strcmp(argv[1], "--config-dialog") == 0;
+
+    createSystems( &graphicsGameState, &graphicsSystem, config_dialog );
+
 
     try
     {
@@ -106,12 +111,14 @@ int main( int argc, const char *argv[] )
 }
 
 void createSystems( SVRGameState **outGraphicsGameState,
-                    SVRGraphicsSystem **outGraphicsSystem)
+                    SVRGraphicsSystem **outGraphicsSystem,
+                    bool configDialog
+                  )
 {
     SVRGameState *gfxGameState = new SVRGameState(
     "SVR" );
 
-    SVRGraphicsSystem *graphicsSystem = new SVRGraphicsSystem( gfxGameState );
+    SVRGraphicsSystem *graphicsSystem = new SVRGraphicsSystem( gfxGameState, configDialog );
 
     gfxGameState->_notifyGraphicsSystem( graphicsSystem );
 

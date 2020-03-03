@@ -229,8 +229,13 @@ namespace Demo
         }
     }
 
-    void OpenVRCompositorListener::calcAlign()
+    bool OpenVRCompositorListener::calcAlign()
     {
+        if(mImgScale <= 0)
+        {
+            return false;
+        }
+
         if (mInputType == VIDEO)
         {
             mImgRatio =  float(mCaptureFrameWidth)/mCaptureFrameHeight;
@@ -273,24 +278,27 @@ namespace Demo
             }
             float align_f = (-tan[i][0] * vr_size * open_tan_inv) - img_middle;
             std::cout << "Align " << align_f << std::endl;
-            OGRE_ASSERT_MSG(align_f > 0, "align below zero");
+            if (align_f <= 0)
+                return false;
             align[i] = static_cast<size_t>(std::round(align_f));
         }
 
         OGRE_ASSERT_MSG(img_height_resize > 0, "img_height_resize smaller than zero");
         mImgHeightResize = static_cast<size_t>(std::round(img_height_resize));
         OGRE_ASSERT_MSG(img_width_resize > 0, "img_width_resize smaller than zero");
-        mImgWidthResize = static_cast<size_t>(std::round(img_width_resize));
+        mImgWidthResize = static_cast<int>(std::round(img_width_resize));
 
         mAlign.leftLeft = align[0];
         mAlign.rightLeft = vr_width_half + align[1];
         mAlign.leftTop = align[2];
         mAlign.rightTop = align[3];
 
-        std::cout << "Align leftLeft:" << mAlign.leftLeft << std::endl;
-        std::cout << "Align leftTop:" << mAlign.leftTop << std::endl;
-        std::cout << "Align rightLeft:" << mAlign.rightLeft << std::endl;
-        std::cout << "Align rightTop:" << mAlign.rightTop << std::endl;
+        return true;
+
+//         std::cout << "Align leftLeft:" << mAlign.leftLeft << std::endl;
+//         std::cout << "Align leftTop:" << mAlign.leftTop << std::endl;
+//         std::cout << "Align rightLeft:" << mAlign.rightLeft << std::endl;
+//         std::cout << "Align rightTop:" << mAlign.rightTop << std::endl;
     }
 
     //-------------------------------------------------------------------------
@@ -395,6 +403,7 @@ namespace Demo
             size_t align_top;
             Mat* dst;
             //left eye
+            int vr_width_half = mVrTexture->getWidth()/2;
             for(size_t i = 0; i < 2u; i++) {
                 if (i == 0) {
                     align_left = mAlign.leftLeft;
@@ -402,7 +411,7 @@ namespace Demo
                     dst = &ldst;
                 }
                 else {
-                    align_left = mAlign.rightLeft;
+                    align_left =  mAlign.rightLeft;
                     align_top = mAlign.rightTop;
                     dst = &rdst;
                 }
@@ -421,7 +430,7 @@ namespace Demo
                 }
             }
         }
-        mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
+//         mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
         mVrTexture->_setNextResidencyStatus( GpuResidency::Resident );
         //We have to upload the data via a StagingTexture, which acts as an intermediate stash
         //memory that is both visible to CPU and GPU.
@@ -544,8 +553,12 @@ namespace Demo
 
     void OpenVRCompositorListener::setImgScale(float imgScale)
     {
+        float oldImgScale = mImgScale;
         mImgScale = imgScale;
-        calcAlign();
+        if (!calcAlign()) {
+            mImgScale = oldImgScale;
+            calcAlign();
+        }
     }
 
     OpenVRCompositorListener::InputType
