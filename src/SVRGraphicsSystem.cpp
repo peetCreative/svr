@@ -83,7 +83,7 @@ namespace Demo {
             mWriteAccessFolder = filesystemLayer.getWritablePath( "" );
         }
         memset( mTrackedDevicePose, 0, sizeof (mTrackedDevicePose) );
-        mResourcePath = "../../resources/";
+        mResourcePath = "../Data/";
     }
     //-----------------------------------------------------------------------------------
     SVRGraphicsSystem::~SVRGraphicsSystem()
