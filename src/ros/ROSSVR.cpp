@@ -100,8 +100,11 @@ void ROSSVRNodelet::newImageCallback(
     try
     {
         graphicsSystem->beginFrameParallel();
-        graphicsSystem->setROSImgPtr(imgLeft, imgRight);
+        graphicsSystem->getOvrCompositorListener()->setImgPtr(
+            &(imgLeft->image), &(imgRight->image));
         graphicsSystem->update( static_cast<float>( timeSinceLast ) );
+        graphicsSystem->getOvrCompositorListener()->setImgPtr(
+            nullptr);
         graphicsSystem->finishFrameParallel();
 
         if( !renderWindow->isVisible() )

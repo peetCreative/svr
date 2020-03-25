@@ -1,6 +1,8 @@
 #include "SVRGraphicsSystem.h"
 #include "SVRGameState.h"
 
+using namespace Demo;
+
 void createSystems( SVRGameState **outGraphicsGameState,
                     SVRGraphicsSystem **outGraphicsSystem,
                     bool configDialog

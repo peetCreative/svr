@@ -176,7 +176,6 @@ namespace Demo
         size_t mImgWidthResize[2];
         size_t mImgHeightResize[2];
         cv::Mat* mImageOrig[2];
-        cv::Mat* mImageResize[2];
         Ogre::uint8 *mImageData;
         Ogre::StagingTexture *mStagingTexture;
 
@@ -225,6 +224,7 @@ namespace Demo
         {mWriteTexture = true;};
         float getImgScale();
         void setImgScale(float imgScale);
+        void setImgPtr(cv::Mat *left, cv::Mat *right);
 
         /** When operating in VrWaitingMode::AfterSceneGraph or later, there's a chance
             graphical artifacts appear if the camera transform is immediately changed after

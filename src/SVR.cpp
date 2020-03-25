@@ -1,3 +1,5 @@
+#include "SVR.h"
+
 #include "OgrePrerequisites.h"
 #include <iostream>
 
@@ -24,8 +26,8 @@ using namespace Demo;
 
 int main( int argc, const char *argv[] )
 {
-    SVRGameState *graphicsGameState = 0;
-    SVRGraphicsSystem *graphicsSystem = 0;
+    SVRGameState *graphicsGameState = nullptr;
+    SVRGraphicsSystem *graphicsSystem = nullptr;
 
     bool config_dialog = argc >= 2 && std::strcmp(argv[1], "--config-dialog") == 0;
 

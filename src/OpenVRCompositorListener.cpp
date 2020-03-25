@@ -56,7 +56,6 @@ namespace Demo
         mImgWidthResize{0,0},
         mImgHeightResize{0,0},
         mImageOrig{nullptr, nullptr},
-        mImageResize{nullptr, nullptr},
         mMagicCnt(0),
         mImageCnt(0)
     {
@@ -363,11 +362,6 @@ namespace Demo
             }
         }
 
-        Size leftSize(mImgWidthResize[0], mImgHeightResize[0]);
-        mImageResize[0] = new Mat(leftSize, CV_8UC3);
-        Size rightSize(mImgWidthResize[1], mImgHeightResize[1]);
-        mImageResize[1] = new Mat(rightSize, CV_8UC3);
-
         if (mInputType == ROS)
         {
             mImageOrig[0] = nullptr;
@@ -422,14 +416,11 @@ namespace Demo
             mVrTexture->_getSysRamCopyBytesPerRow( 0 );
 
 //         memset(mImageData, 25, dataSize);
-        Mat *left;
-        Mat *right;
-
-        if (mInputType == ROS)
-        {
-            mImageOrig[0] = mLeftROSImgPtr;
-            mImageOrig[1] = mRightROSImgPtr;
-        }
+//         if (mInputType == ROS)
+//         {
+//             mImageOrig[0] = mLeftROSImgPtr;
+//             mImageOrig[1] = mRightROSImgPtr;
+//         }
         if(mInputType == VIDEO)
         {
             // Capture frame-by-frame
@@ -483,8 +474,12 @@ namespace Demo
             return false;
         }
 
-        resize(&mImageOrig[0], &mImageResize[0], mImageResize[0]->size());
-        resize(&mImageOrig[1], &mImageResize[1], mImageResize[1]->size());
+        Mat ldst = Mat();
+        Mat rdst = Mat();
+        Size leftSize = Size(mImgWidthResize[0],  mImgHeightResize[0]);
+        Size rightSize = Size(mImgWidthResize[1], mImgHeightResize[1]);
+        resize(*mImageOrig[0], ldst, leftSize);
+        resize(*mImageOrig[1], rdst, rightSize);
 
 //         std::cout << mVrTexture->getWidth() << std::endl;
 //         std::cout << mVrTexture->getHeight() << std::endl;
@@ -496,9 +491,8 @@ namespace Demo
 //         std::cout << "height_resize " << height_resize << std::endl;
 //         std::cout << "ldst.cols " << ldst.cols << std::endl;
 //         std::cout << "ldst.rows " << ldst.rows << std::endl;
-        }
 
-        if (rdst && ldst && !rdst->empty() && !ldst->empty()) {
+        if ( !ldst.empty() && !rdst.empty()) {
             size_t align_left;
             size_t align_top;
             Mat* dst;
@@ -506,23 +500,23 @@ namespace Demo
                 if (i == 0) {
                     align_left = mAlign.leftLeft;
                     align_top = mAlign.leftTop;
-                    dst = ldst;
+                    dst = &ldst;
                 }
                 else {
                     align_left =  mAlign.rightLeft;
                     align_top = mAlign.rightTop;
-                    dst = rdst;
+                    dst = &rdst;
                 }
                 size_t row_cnt = align_top * bytesPerRow;
                 for (size_t y = 0; y < mImgHeightResize[i]; y++) {
                     size_t cnt = row_cnt + (align_left * bytesPerPixel);
                     uint8_t* img_row_ptr = dst->ptr<uint8_t>(y);
                     for (size_t x = 0; x < mImgWidthResize[i]; x++) {
-                        imageData[cnt++] = *(img_row_ptr+2);
-                        imageData[cnt++] = *(img_row_ptr+1);
-                        imageData[cnt++] = *img_row_ptr;
+                        mImageData[cnt++] = *(img_row_ptr+2);
+                        mImageData[cnt++] = *(img_row_ptr+1);
+                        mImageData[cnt++] = *img_row_ptr;
                         img_row_ptr += 3;
-                        imageData[cnt++] = 0;
+                        mImageData[cnt++] = 0;
                     }
                     row_cnt += bytesPerRow;
                 }
@@ -595,7 +589,7 @@ namespace Demo
         TextureGpuManager *textureManager =
             mRoot->getRenderSystem()->getTextureGpuManager();
         textureManager->waitForStreamingCompletion();
-        
+
         mVrTexture->waitForData();
         mVrTexture->getCustomAttribute( Ogre::TextureGpu::msFinalTextureBuffer, &eyeTexture.handle );
 
@@ -645,6 +639,13 @@ namespace Demo
             calcAlign();
         }
     }
+
+    void OpenVRCompositorListener::setImgPtr(cv::Mat *left, cv::Mat *right)
+    {
+        mImageOrig[0] = left;
+        mImageOrig[1] = right;
+    }
+
 
     OpenVRCompositorListener::InputType
         OpenVRCompositorListener::getInputType()

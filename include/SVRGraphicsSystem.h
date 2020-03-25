@@ -129,11 +129,11 @@ namespace Demo
         ~SVRGraphicsSystem();
 
         void _notifyLogicSystem( BaseSystem *logicSystem )      { mLogicSystem = logicSystem; }
-        
-        
+
         void initialize( const Ogre::String &windowTitle );
         void deinitialize(void);
-        
+
+        void setImgPtr();
         void update( float timeSinceLast );
 
 #if OGRE_USE_SDL2
