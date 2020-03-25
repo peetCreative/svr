@@ -86,6 +86,9 @@ function( setupResourceFileFromTemplate )
 		${CMAKE_SOURCE_DIR}/CMake/Templates/Resources.cfg.in" )
 	set( OGRE_MEDIA_DIR "../" )
 	configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/Resources.cfg.in ${CMAKE_SOURCE_DIR}/bin/Data/resources2.cfg )
+	message( STATUS "Generating ${CMAKE_SOURCE_DIR}/bin/Data/HiddenAreaMeshVr.cfg from template
+		${CMAKE_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in" )
+	configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in ${CMAKE_SOURCE_DIR}/bin/Data/HiddenAreaMeshVr.cfg )
 endfunction()
 
 #----------------------------------------------------------------------------------------
