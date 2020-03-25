@@ -34,6 +34,8 @@
 
 #include "OgreGpuProgramManager.h"
 
+#include <OgreRectangle2D2.h>
+
 namespace Demo
 {
     //-----------------------------------------------------------------------------------
@@ -53,11 +55,49 @@ namespace Demo
         mCameraController = 0;
     }
 
-    
-	void SVRGameState::createScene01(void)
+    void SVRGameState::createScene01(void)
     {
 //         mCameraController = new CameraController( mGraphicsSystem, false );
+        Ogre::SceneManager *sceneManager = mGraphicsSystem->getSceneManager();
+        const bool bIsHamVrOptEnabled = 
+            !Ogre::MeshManager::getSingleton().getByName(
+                "HiddenAreaMeshVr.mesh",
+                Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME
+            ).isNull();
 
+        if( bIsHamVrOptEnabled )
+        {
+            mHiddenAreaMeshVr =
+                    sceneManager->createItem( "HiddenAreaMeshVr.mesh",
+                                              Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME,
+                                              Ogre::SCENE_STATIC );
+            mHiddenAreaMeshVr->setCastShadows( false );
+            mHiddenAreaMeshVr->setRenderQueueGroup( 0u );
+            mHiddenAreaMeshVr->getSubItem(0)->setUseIdentityProjection( true );
+            // Set to render *after* the RadialDensityMask
+            mHiddenAreaMeshVr->getSubItem(0)->setRenderQueueSubGroup( 1u );
+            sceneManager->getRootSceneNode( Ogre::SCENE_STATIC )->attachObject( mHiddenAreaMeshVr );
+        }
+//         Ogre::Rectangle2D *item = 
+//             sceneManager->createRectangle2D(Ogre::SCENE_STATIC);
+//         Ogre::SceneNode *sceneNode =
+//             sceneManager->getRootSceneNode(
+//                 Ogre::SCENE_DYNAMIC )->                                                   createChildSceneNode( Ogre::SCENE_DYNAMIC );
+//         sceneNode->setPosition( 0, -1, 0 );
+//         sceneNode->attachObject( item );
+                Ogre::SceneNode *rootNode = sceneManager->getRootSceneNode();
+
+        Ogre::Light *light = sceneManager->createLight();
+        Ogre::SceneNode *lightNode = rootNode->createChildSceneNode();
+        lightNode->attachObject( light );
+        light->setPowerScale( 1.0f );
+        light->setType( Ogre::Light::LT_DIRECTIONAL );
+        light->setDirection( Ogre::Vector3( -1, -1, -1 ).normalisedCopy() );
+
+        mLightNodes = lightNode;
+        sceneManager->setAmbientLight( Ogre::ColourValue( 0.3f, 0.5f, 0.7f ) * 0.1f * 0.75f,
+                                       Ogre::ColourValue( 0.6f, 0.45f, 0.3f ) * 0.065f * 0.75f,
+                                       -light->getDirection() + Ogre::Vector3::UNIT_Y * 0.2f );
         createDebugTextOverlay();
     }
 
@@ -65,9 +105,8 @@ namespace Demo
     {
 		mGraphicsSystem = graphicsSystem;
     }
-    
 
-	    //-----------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------
     void SVRGameState::createDebugTextOverlay(void)
     {
         Ogre::v1::OverlayManager &overlayManager = Ogre::v1::OverlayManager::getSingleton();
@@ -80,7 +119,7 @@ namespace Demo
         mDebugText->setFontName( "DebugFont" );
         mDebugText->setCharHeight( 0.025f );
 
-        mDebugTextShadow= static_cast<Ogre::v1::TextAreaOverlayElement*>(
+        mDebugTextShadow = static_cast<Ogre::v1::TextAreaOverlayElement*>(
                     overlayManager.createOverlayElement( "TextArea", "0DebugTextShadow" ) );
         mDebugTextShadow->setFontName( "DebugFont" );
         mDebugTextShadow->setCharHeight( 0.025f );
@@ -226,13 +265,17 @@ namespace Demo
         }
         else if(arg.keysym.scancode == SDL_SCANCODE_X)
         {
-            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            std::cout << "change to VIDEO!!!!!!!!!!" << std::endl;
+            OpenVRCompositorListener *ovrListener =
+                mGraphicsSystem->getOvrCompositorListener();
             ovrListener->setInputType(
                 OpenVRCompositorListener::VIDEO);
         }
         else if(arg.keysym.scancode == SDL_SCANCODE_Y)
         {
-            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            std::cout << "change to series!!!!!!!!!!" << std::endl;
+            OpenVRCompositorListener *ovrListener =
+                mGraphicsSystem->getOvrCompositorListener();
             ovrListener->setInputType(
                 OpenVRCompositorListener::IMG_SERIES);
         }

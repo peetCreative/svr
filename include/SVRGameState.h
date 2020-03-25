@@ -20,6 +20,7 @@ namespace Demo
     {
     protected:
         SVRGraphicsSystem      *mGraphicsSystem;
+        Ogre::SceneNode     *mLightNodes;
 
         /// Optional, for controlling the camera with WASD and the mouse
         CameraController    *mCameraController;
@@ -33,6 +34,8 @@ namespace Demo
 
         virtual void createDebugTextOverlay(void);
         virtual void generateDebugText( float timeSinceLast, Ogre::String &outText );
+
+        Ogre::Item      *mHiddenAreaMeshVr;
 
     public:
         SVRGameState( const Ogre::String &helpDescription );

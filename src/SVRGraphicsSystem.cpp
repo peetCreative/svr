@@ -1,4 +1,4 @@
-#include "SVRGraphicsSystem.h"
+#include "base/SVRGraphicsSystem.h"
 
 #include "OgreCommon/GameState.h"
 #include "OgreCommon/SdlInputHandler.h"
@@ -34,6 +34,14 @@
 #include "OgreWindow.h"
 #include "OgreConfigFile.h"
 #include "Compositor/OgreCompositorManager2.h"
+#include "OgreHiddenAreaMeshVr.h"
+
+//Hlms
+#include "OgreHlmsUnlit.h"
+#include "OgreHlmsPbs.h"
+#include "OgreHlmsManager.h"
+#include "OgreArchiveManager.h"
+
 
 #include "OgreTextureGpuManager.h"
 
@@ -83,7 +91,7 @@ namespace Demo {
             mWriteAccessFolder = filesystemLayer.getWritablePath( "" );
         }
         memset( mTrackedDevicePose, 0, sizeof (mTrackedDevicePose) );
-        mResourcePath = "../Data/";
+        mResourcePath = "../../resources/";
     }
     //-----------------------------------------------------------------------------------
     SVRGraphicsSystem::~SVRGraphicsSystem()
@@ -476,7 +484,6 @@ namespace Demo {
         // Load resource paths from config file
         Ogre::ConfigFile cf;
         cf.load(mResourcePath + "resources2.cfg");
-
         // Go through all sections & settings in the file
         Ogre::ConfigFile::SectionIterator seci = cf.getSectionIterator();
 
@@ -497,11 +504,102 @@ namespace Demo {
                 }
             }
         }
+//         Ogre::ConfigFile cf;
+//         cf.load(mResourcePath + "resources2.cfg");
+
+        Ogre::String dataFolder = cf.getSetting( "DoNotUseAsResource", "Hlms", "" );
+
+        if( dataFolder.empty() )
+            dataFolder = "./";
+        else if( *(dataFolder.end() - 1) != '/' )
+            dataFolder += "/";
+
+        Ogre::String originalDataFolder = cf.getSetting( "DoNotUseAsResource", "Hlms", "" );
+
+        if( originalDataFolder.empty() )
+            originalDataFolder = "./";
+        else if( *(originalDataFolder.end() - 1) != '/' )
+            originalDataFolder += "/";
+
+        const char *c_locations[] =
+        {
+            "Hlms/Common/GLSL",
+            "Hlms/Common/HLSL",
+            "Hlms/Common/Metal",
+            "Compute/Tools/Any",
+            "Compute/VR",
+            "Compute/VR/Foveated",
+            "2.0/scripts/materials/PbsMaterials"
+        };
+
+        for( size_t i=0; i<sizeof(c_locations) / sizeof(c_locations[0]); ++i )
+        {
+            Ogre::String dataFolder1 = originalDataFolder + c_locations[i];
+            addResourceLocation( dataFolder1, "FileSystem", "General" );
+        }
+    }
+
+    void SVRGraphicsSystem::registerHlms(void)
+    {
+        Ogre::ConfigFile cf;
+        cf.load( mResourcePath + "resources2.cfg" );
+
+#if OGRE_PLATFORM == OGRE_PLATFORM_APPLE || OGRE_PLATFORM == OGRE_PLATFORM_APPLE_IOS
+        Ogre::String rootHlmsFolder = Ogre::macBundlePath() + '/' +
+                                  cf.getSetting( "DoNotUseAsResource", "Hlms", "" );
+#else
+        Ogre::String rootHlmsFolder = cf.getSetting( "DoNotUseAsResource", "Hlms", "" );
+#endif
+
+        if( rootHlmsFolder.empty() )
+            rootHlmsFolder = "./";
+        else if( *(rootHlmsFolder.end() - 1) != '/' )
+            rootHlmsFolder += "/";
+
+        //At this point rootHlmsFolder should be a valid path to the Hlms data folder
+
+        Ogre::HlmsUnlit *hlmsUnlit = 0;
+
+        //For retrieval of the paths to the different folders needed
+        Ogre::String mainFolderPath;
+        Ogre::StringVector libraryFoldersPaths;
+        Ogre::StringVector::const_iterator libraryFolderPathIt;
+        Ogre::StringVector::const_iterator libraryFolderPathEn;
+
+        Ogre::ArchiveManager &archiveManager =
+            Ogre::ArchiveManager::getSingleton();
+
+        {
+            //Create & Register HlmsUnlit
+            //Get the path to all the subdirectories used by HlmsUnlit
+            Ogre::HlmsUnlit::getDefaultPaths(
+                mainFolderPath, libraryFoldersPaths );
+            Ogre::Archive *archiveUnlit = archiveManager.load(
+                rootHlmsFolder + mainFolderPath,
+                "FileSystem", true );
+            Ogre::ArchiveVec archiveUnlitLibraryFolders;
+            libraryFolderPathIt = libraryFoldersPaths.begin();
+            libraryFolderPathEn = libraryFoldersPaths.end();
+            while( libraryFolderPathIt != libraryFolderPathEn )
+            {
+                Ogre::Archive *archiveLibrary =
+                        archiveManager.load( rootHlmsFolder + *libraryFolderPathIt, "FileSystem", true );
+                archiveUnlitLibraryFolders.push_back( archiveLibrary );
+                ++libraryFolderPathIt;
+            }
+
+            //Create and register the unlit Hlms
+            hlmsUnlit = OGRE_NEW Ogre::HlmsUnlit( archiveUnlit, &archiveUnlitLibraryFolders );
+            Ogre::Root::getSingleton().getHlmsManager()->registerHlms( hlmsUnlit );
+        }
+
     }
 
     //-----------------------------------------------------------------------------------
     void SVRGraphicsSystem::loadResources(void)
     {
+        registerHlms();
+
         // Initialise, parse scripts etc
         Ogre::ResourceGroupManager::getSingleton().initialiseAllResourceGroups( true );
     }
@@ -560,7 +658,8 @@ namespace Demo {
         channels[1] = mVrTexture;
         return compositorManager->addWorkspace(
             mSceneManager, channels, mCamera,
-            "SVRMirrorWindowWorkspace", true );
+            "SVRMirrorWindowWorkspace", 
+            true );
 #else
         return compositorManager->addWorkspace(
             mSceneManager, mRenderWindow->getTexture(), mCamera,
@@ -584,8 +683,9 @@ namespace Demo {
             return "";
 
         char *pchBuffer = new char[ unRequiredBufferLen ];
-        unRequiredBufferLen = vrSystem->GetStringTrackedDeviceProperty( unDevice, prop, pchBuffer,
-                                                                        unRequiredBufferLen, peError );
+        unRequiredBufferLen = vrSystem->GetStringTrackedDeviceProperty(
+            unDevice, prop, pchBuffer,
+            unRequiredBufferLen, peError );
         std::string sResult = pchBuffer;
         delete [] pchBuffer;
         return sResult;
@@ -624,8 +724,7 @@ namespace Demo {
         uint32_t width, height, new_width;
         //gives us the render target off one eye
         mHMD->GetRecommendedRenderTargetSize( &width, &height );
-    
-        
+
         Ogre::TextureGpuManager *textureManager = mRoot->getRenderSystem()->getTextureGpuManager();
         //Radial Density Mask requires the VR texture to be UAV & reinterpretable
         mVrTexture = textureManager->createOrRetrieveTexture(
@@ -643,16 +742,14 @@ namespace Demo {
         mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
 
         Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
-        
-//         compos
-//         Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
         if(compositorManager->hasWorkspaceDefinition("SVRWorkspace"))
             std::cout << "no Workspace"<< std::endl;
         mVrWorkspace = compositorManager->addWorkspace(
             mSceneManager, mVrTexture, mCamera,
-            "SVRWorkspace", true, 0 );
-        
+            "SVRWorkspace",
+            true, 0 );
 
+        createHiddenAreaMeshVR();
 
         mOvrCompositorListener = new Demo::OpenVRCompositorListener(
             mHMD, vr::VRCompositor(), vr::VROverlay(), mVrTexture,
@@ -670,5 +767,26 @@ namespace Demo {
         }
     }
 
+    void SVRGraphicsSystem::createHiddenAreaMeshVR(void)
+    {
+        try
+        {
+            Ogre::ConfigFile cfgFile;
+            cfgFile.load( mResourcePath + "HiddenAreaMeshVr.cfg" );
+
+            Ogre::HiddenAreaVrSettings setting;
+            setting = Ogre::HiddenAreaMeshVrGenerator::loadSettings( mDeviceModelNumber, cfgFile );
+            if( setting.tessellation > 0u )
+                Ogre::HiddenAreaMeshVrGenerator::generate( "HiddenAreaMeshVr.mesh", setting );
+            Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
+            logManager.logMessage( "HiddenAreaMeshVR optimization IS AVAILABLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" );
+        }
+        catch( Ogre::FileNotFoundException &e )
+        {
+            Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
+            logManager.logMessage( e.getDescription() );
+            logManager.logMessage( "HiddenAreaMeshVR optimization won't be available" );
+        }
+    }
 
 };

@@ -6,6 +6,7 @@
 #include "OgreMemoryAllocatorConfig.h"
 #include "OgreGpuResource.h"
 #include "OgreStagingTexture.h"
+#include "OgreLogManager.h"
 
 #include "opencv2/opencv.hpp"
 
@@ -19,9 +20,11 @@
 
 #include <sstream>
 #include <cmath>
+#include <experimental/filesystem>
 
 using namespace Ogre;
 using namespace cv;
+namespace fs = std::experimental::filesystem;
 
 namespace Demo
 {
@@ -50,9 +53,12 @@ namespace Demo
         mMustSyncAtEndOfFrame( false ),
         mImgScale(0.3),
         mImgRatio(640/512.0),
-        mImageCnt(0),
+        mImgWidthResize{0,0},
+        mImgHeightResize{0,0},
+        mImageOrig{nullptr, nullptr},
+        mImageResize{nullptr, nullptr},
         mMagicCnt(0),
-        mInputType(VIDEO)
+        mImageCnt(0)
     {
         memset( mTrackedDevicePose, 0, sizeof( mTrackedDevicePose ) );
         memset( mDevicePose, 0, sizeof( mDevicePose ) );
@@ -62,8 +68,12 @@ namespace Demo
         mAlign.rightLeft = 0;
         mAlign.rightTop = 0;
 
+        mInputType = IMG_TIMESTAMP;
         if(mInputType == VIDEO)
             initVideoInput();
+        else if (mInputType == IMG_TIMESTAMP)
+            initImgsTimestamp();
+
 
         mCamera->setVrData( &mVrData );
         syncCameraProjection( true );
@@ -90,10 +100,48 @@ namespace Demo
             mApiTextureType = vr::TextureType_Metal;
         mNextPict = true;
         mWriteTexture = true;
+
+
+        TextureGpuManager *textureManager =
+            mRoot->getRenderSystem()->getTextureGpuManager();
+        const uint32 rowAlignment = 4u;
+        const size_t dataSize =
+            PixelFormatGpuUtils::getSizeBytes(
+                mVrTexture->getWidth(),
+                mVrTexture->getHeight(),
+                mVrTexture->getDepth(),
+                mVrTexture->getNumSlices(),
+                mVrTexture->getPixelFormat(),
+                rowAlignment );
+        const size_t bytesPerRow =
+            mVrTexture->_getSysRamCopyBytesPerRow( 0 );
+
+        mImageData = reinterpret_cast<uint8*>(
+            OGRE_MALLOC_SIMD( dataSize,
+            MEMCATEGORY_RESOURCE ) );
+        memset(mImageData, 25, dataSize);
+
+        //We have to upload the data via a StagingTexture, which acts as an intermediate stash
+        //memory that is both visible to CPU and GPU.
+        mStagingTexture = 
+            textureManager->getStagingTexture(
+                mVrTexture->getWidth(),
+                mVrTexture->getHeight(),
+                mVrTexture->getDepth(),
+                mVrTexture->getNumSlices(),
+                mVrTexture->getPixelFormat() );
     }
     //-------------------------------------------------------------------------
     OpenVRCompositorListener::~OpenVRCompositorListener()
     {
+        TextureGpuManager *textureManager =
+            mRoot->getRenderSystem()->getTextureGpuManager();
+        //Tell the TextureGpuManager we're done with this StagingTexture. Otherwise it will leak.
+        textureManager->removeStagingTexture( mStagingTexture );
+        mStagingTexture = 0;
+        //Do not free the pointer if texture's paging strategy is GpuPageOutStrategy::AlwaysKeepSystemRamCopy
+        OGRE_FREE_SIMD( mImageData, MEMCATEGORY_RESOURCE );
+        mImageData = 0;
         if( mCamera )
             mCamera->setVrData( 0 );
 
@@ -114,6 +162,9 @@ namespace Demo
                 mCapture.get(CV_CAP_PROP_FORMAT);
     }
 
+    void OpenVRCompositorListener::initImgsTimestamp() {
+        mFileIteratorLeft = fs::directory_iterator("/tmp/new_images");
+    }
     //-------------------------------------------------------------------------
     Ogre::Matrix4 OpenVRCompositorListener::convertSteamVRMatrixToMatrix4( vr::HmdMatrix34_t matPose )
     {
@@ -244,10 +295,25 @@ namespace Demo
         {
             mImgRatio =  640/512.0;
         }
+
+        //TODO: read the correct camera calibration info
+        //DUMMY CAMERACALIBRATION READ CORRECT ONE
+        float img_size_x = 640;
+        float img_size_y = 512;
+        float f_x_left = 534.195;
+        float f_y_left = 534.095;
+        float c_x_left = 300.45;
+        float c_y_left = 250.37;
+        float f_x_right = 533.915;
+        float f_y_right = 533.8;
+        float c_x_right = 349.11;
+        float c_y_right = 250.825;
+
+        //now we have to know
         size_t vr_width_half = mVrTexture->getWidth()/2;
 
-        float img_height_resize = mVrTexture->getHeight() * mImgScale;
-        float img_width_resize = img_height_resize * mImgRatio;
+//         float img_height_resize_left = mVrTexture->getHeight() * mImgScale;
+//         float img_width_resize_right = img_height_resize * mImgRatio;
 
         //left_left, left_right
         //right_left right_right
@@ -257,37 +323,67 @@ namespace Demo
 
         //leftLeft, rightLeft leftTop rightTop
         size_t align[4];
+        float c_vr[4];
+        float  img_size_resize[4];
+        float  img_middle_resize[4];
+        size_t vr_size[4] = {vr_width_half, vr_width_half,
+            mVrTexture->getHeight(), mVrTexture->getHeight()};
+        float img_size[4] = {img_size_x, img_size_x,
+            img_size_y, img_size_y};
+        float f_cam[4] = {f_x_left, f_x_right, f_y_left, f_y_right};
+        float c_cam[4] = {c_x_left, c_x_right, c_y_left, c_y_right};
 
         mHMD->GetProjectionRaw(
             vr::Eye_Left, &tan[0][0], &tan[0][1], &tan[2][0], &tan[2][1]);
         mHMD->GetProjectionRaw(
             vr::Eye_Right, &tan[1][0], &tan[1][1], &tan[3][0], &tan[3][1]);
 
-        for( size_t i = 0; i < 4; i++ ) {
-            float img_middle;
-            float vr_size;
-            float open_tan_inv = 1.0 / (- tan[i][0] + tan[i][1]);
-            //first we do horizontal alignment
-            if (i < 2) {
-                img_middle = img_width_resize * 0.5;
-                vr_size = vr_width_half;
-            }
-            else {
-                img_middle = img_height_resize * 0.5;
-                vr_size = mVrTexture->getHeight();
-            }
-            float align_f = (-tan[i][0] * vr_size * open_tan_inv) - img_middle;
-            std::cout << "Align " << align_f << std::endl;
+        std::cout << "ratio left: " << vr_width_half << " " << mVrTexture->getHeight() << std::endl;
+        std::cout << "ratio left: " << -tan[0][0] + tan[0][1] << " " <<
+            -tan[2][0] + tan[2][1] << std::endl;
+        std::cout << "ratio right: " << -tan[0][0] + tan[0][1] << " " <<
+            -tan[2][0] + tan[2][1] << std::endl;
+
+        for (int i = 0; i < 4; i++)
+        {
+            c_vr[i] = -tan[i][0] * vr_size[i] / (-tan[i][0] + tan[i][1]);
+            img_size_resize[i] = c_vr[i] * img_size[i] / (f_cam[i] * -tan[i][0]);
+            img_middle_resize[i] = img_size_resize[i] * c_cam[i] / img_size[i]; 
+            float align_f = c_vr[i] - img_middle_resize[i];
             if (align_f <= 0)
                 return false;
             align[i] = static_cast<size_t>(std::round(align_f));
+            OGRE_ASSERT_MSG(img_size_resize[i] > 0, "img_height_resize smaller than zero");
+            if (i < 2) {
+                mImgWidthResize[i%2] =
+                    static_cast<size_t>(std::round(img_size_resize[i]));
+            } else {
+                mImgHeightResize[i%2] =
+                    static_cast<size_t>(std::round(img_size_resize[i]));
+            }
         }
 
-        OGRE_ASSERT_MSG(img_height_resize > 0, "img_height_resize smaller than zero");
-        mImgHeightResize = static_cast<size_t>(std::round(img_height_resize));
-        OGRE_ASSERT_MSG(img_width_resize > 0, "img_width_resize smaller than zero");
-        mImgWidthResize = static_cast<int>(std::round(img_width_resize));
+        Size leftSize(mImgWidthResize[0], mImgHeightResize[0]);
+        mImageResize[0] = new Mat(leftSize, CV_8UC3);
+        Size rightSize(mImgWidthResize[1], mImgHeightResize[1]);
+        mImageResize[1] = new Mat(rightSize, CV_8UC3);
 
+        if (mInputType == ROS)
+        {
+            mImageOrig[0] = nullptr;
+            mImageOrig[1] = nullptr;
+        }
+        else
+        {
+            Size origSize(img_size_x, img_size_y);
+            mImageOrig[0] = new Mat(origSize, CV_8UC3);
+            mImageOrig[1] = new Mat(origSize, CV_8UC3);
+        }
+
+        std::cout <<"left  resize:" << mImgWidthResize[0] 
+            << " " << mImgHeightResize[0] << std::endl;
+        std::cout <<"right resize:" << mImgWidthResize[1] 
+            << " " << mImgHeightResize[1] << std::endl;
         mAlign.leftLeft = align[0];
         mAlign.rightLeft = vr_width_half + align[1];
         mAlign.leftTop = align[2];
@@ -306,6 +402,7 @@ namespace Demo
     {
         if(mNextPict) {
             fillTexture();
+            mNextPict = false;
         }
 
         if( mWaitingMode == VrWaitingMode::BeforeSceneGraph )
@@ -319,44 +416,36 @@ namespace Demo
         if (mMagicCnt-- != 0) {
             return false;
         }
-        TextureGpuManager *textureManager =
-            mRoot->getRenderSystem()->getTextureGpuManager();
-        const uint32 rowAlignment = 4u;
-        const size_t dataSize =
-            PixelFormatGpuUtils::getSizeBytes(
-                mVrTexture->getWidth(),
-                mVrTexture->getHeight(),
-                mVrTexture->getDepth(),
-                mVrTexture->getNumSlices(),
-                mVrTexture->getPixelFormat(),
-                rowAlignment );
+
+        const size_t bytesPerPixel = 4u;
         const size_t bytesPerRow =
             mVrTexture->_getSysRamCopyBytesPerRow( 0 );
-        const size_t bytesPerPixel = 4u;
 
-        uint8 *imageData = reinterpret_cast<uint8*>(
-            OGRE_MALLOC_SIMD( dataSize,
-            MEMCATEGORY_RESOURCE ) );
-        memset(imageData, 25, dataSize);
+//         memset(mImageData, 25, dataSize);
+        Mat *left;
+        Mat *right;
 
-        Mat left;
-        Mat right;
+        if (mInputType == ROS)
+        {
+            mImageOrig[0] = mLeftROSImgPtr;
+            mImageOrig[1] = mRightROSImgPtr;
+        }
         if(mInputType == VIDEO)
         {
-        // Capture frame-by-frame
+            // Capture frame-by-frame
             mCapture >> mMat; //1920/1080
-//             std::cout <<"type:" << std::endl;
-//             std::cout <<"type:" << mCapture.get(CV_CAP_PROP_FORMAT ) << std::endl;
-//                 << " width:" << mCapture.get(CV_CAP_PROP_FRAME_WIDTH)
-//                 << " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
-//                 << std::endl;
-//             1920x540
+            //std::cout <<"type:" << std::endl;
+            //std::cout <<"type:" << mCapture.get(CV_CAP_PROP_FORMAT ) << std::endl;
+            //<< " width:" << mCapture.get(CV_CAP_PROP_FRAME_WIDTH)
+            //<< " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
+            //<< std::endl;
+            //1920x540
             cv::Rect lrect(0,540, 1920, 540);
             cv::Rect rrect(0,0, 1920, 540);
-            left = mMat(lrect);
-            right = mMat(rrect);
+            *mImageOrig[0] = mMat(lrect);
+            *mImageOrig[1] = mMat(rrect);
         }
-        else if (mInputType == IMG_SERIES)
+        if (mInputType == IMG_SERIES)
         {
             if (mImageCnt >= 1000)
                 mImageCnt = 0;
@@ -370,56 +459,65 @@ namespace Demo
                 << ".png";
     //         std::cout << "fill texture with "<< ssl.str() << std::endl;
     //         std::cout << "fill texture with "<< ssr.str() << std::endl;
-            mImageCnt++;
-            left = imread(ssl.str());
-            right = imread(ssr.str());
+//             mImageCnt++;
+            *mImageOrig[0] = imread(ssl.str());
+            *mImageOrig[1] = imread(ssr.str());
         }
-        if(left.empty() || right.empty()
-            || left.cols != right.cols
-            || left.rows != right.rows
-        ) {
+        if (mInputType == IMG_TIMESTAMP)
+        {
+            fs::directory_entry entry_left = *mFileIteratorLeft++;
+            std::string path_str_left = entry_left.path().string();
+            size_t pos_left = path_str_left.rfind("left");
+            std::string path_str_right = path_str_left.substr(0, pos_left) +
+                "right" +
+                path_str_left.substr(pos_left + 4, path_str_left.length());
+            fs::path path_right(path_str_right);
+            if(!exists(path_right))
+                return false;
+            *mImageOrig[0] = imread(path_str_right);
+            *mImageOrig[1] = imread(path_str_left);
+        }
+
+        if(mImageOrig[0]->empty() || mImageOrig[1]->empty())
+        {
             return false;
         }
+
+        resize(&mImageOrig[0], &mImageResize[0], mImageResize[0]->size());
+        resize(&mImageOrig[1], &mImageResize[1], mImageResize[1]->size());
+
 //         std::cout << mVrTexture->getWidth() << std::endl;
 //         std::cout << mVrTexture->getHeight() << std::endl;
 //         std::cout << width_resize << std::endl;
 //         std::cout << "height_resize1 " << height_resize << std::endl;
 //         std::cout << height_resize << std::endl;
-        Mat ldst = Mat();
-        resize(left, ldst,
-                Size(mImgWidthResize,
-                    mImgHeightResize));
-//         std::cout << "after resize" << std::endl;
-        Mat rdst = Mat();
-        resize(right, rdst,
-                Size(mImgWidthResize,                                                                       
-                    mImgHeightResize));
+
 //         std::cout << "width_resize " << width_resize << std::endl;
 //         std::cout << "height_resize " << height_resize << std::endl;
 //         std::cout << "ldst.cols " << ldst.cols << std::endl;
 //         std::cout << "ldst.rows " << ldst.rows << std::endl;
-        if (!rdst.empty() && !ldst.empty()) {
+        }
+
+        if (rdst && ldst && !rdst->empty() && !ldst->empty()) {
             size_t align_left;
             size_t align_top;
             Mat* dst;
-            //left eye
-            int vr_width_half = mVrTexture->getWidth()/2;
             for(size_t i = 0; i < 2u; i++) {
                 if (i == 0) {
                     align_left = mAlign.leftLeft;
                     align_top = mAlign.leftTop;
-                    dst = &ldst;
+                    dst = ldst;
                 }
                 else {
                     align_left =  mAlign.rightLeft;
                     align_top = mAlign.rightTop;
-                    dst = &rdst;
+                    dst = rdst;
                 }
                 size_t row_cnt = align_top * bytesPerRow;
-                for (size_t y = 0; y < mImgHeightResize; y++) {
+                for (size_t y = 0; y < mImgHeightResize[i]; y++) {
                     size_t cnt = row_cnt + (align_left * bytesPerPixel);
                     uint8_t* img_row_ptr = dst->ptr<uint8_t>(y);
-                    for (size_t x = 0; x < mImgWidthResize; x++) {
+                    for (size_t x = 0; x < mImgWidthResize[i]; x++) {
                         imageData[cnt++] = *(img_row_ptr+2);
                         imageData[cnt++] = *(img_row_ptr+1);
                         imageData[cnt++] = *img_row_ptr;
@@ -432,27 +530,19 @@ namespace Demo
         }
 //         mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
         mVrTexture->_setNextResidencyStatus( GpuResidency::Resident );
-        //We have to upload the data via a StagingTexture, which acts as an intermediate stash
-        //memory that is both visible to CPU and GPU.
-        StagingTexture *stagingTexture = 
-            textureManager->getStagingTexture(
-                mVrTexture->getWidth(),
-                mVrTexture->getHeight(),
-                mVrTexture->getDepth(),
-                mVrTexture->getNumSlices(),
-                mVrTexture->getPixelFormat() );
+
         //Call this function to indicate you're going to start calling mapRegion. startMapRegion
         //must be called from main thread.
-        stagingTexture->startMapRegion();
+        mStagingTexture->startMapRegion();
         //Map region of the staging mVrTexture. This function can be called from any thread after
         //startMapRegion has already been called.
-        TextureBox texBox = stagingTexture->mapRegion(
+        TextureBox texBox = mStagingTexture->mapRegion(
             mVrTexture->getWidth(),
             mVrTexture->getHeight(),
             mVrTexture->getDepth(),
             mVrTexture->getNumSlices(),
             mVrTexture->getPixelFormat() );
-        texBox.copyFrom( imageData, 
+        texBox.copyFrom( mImageData,
                          mVrTexture->getWidth(),
                          mVrTexture->getHeight(),
                          bytesPerRow );
@@ -461,18 +551,13 @@ namespace Demo
         //previous mapRegion calls, and that you won't call it again.
         //You cannot upload until you've called this function.
         //Do NOT call startMapRegion again until you're done with upload() calls.
-        stagingTexture->stopMapRegion();
+        mStagingTexture->stopMapRegion();
         //Upload an area of the staging texture into the texture. Must be done from main thread.
         //The last bool parameter, 'skipSysRamCopy', is only relevant for AlwaysKeepSystemRamCopy
         //textures, and we set it to true because we know it's already up to date. Otherwise
         //it needs to be false.
-        stagingTexture->upload( texBox, mVrTexture, 0, 0, 0, true );
-        //Tell the TextureGpuManager we're done with this StagingTexture. Otherwise it will leak.
-        textureManager->removeStagingTexture( stagingTexture );
-        stagingTexture = 0;
-        //Do not free the pointer if texture's paging strategy is GpuPageOutStrategy::AlwaysKeepSystemRamCopy
-        OGRE_FREE_SIMD( imageData, MEMCATEGORY_RESOURCE );
-        imageData = 0;
+        mStagingTexture->upload( texBox, mVrTexture, 0, 0, 0, false );
+
         //This call is very important. It notifies the texture is fully ready for being displayed.
         //Since we've scheduled the texture to become resident and pp until now, the texture knew
         //it was being loaded and that only the metadata was certain. This call here signifies

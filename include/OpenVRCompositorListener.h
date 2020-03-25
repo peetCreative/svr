@@ -2,15 +2,16 @@
 #ifndef _Demo_OpenVRCompositorListener_H_
 #define _Demo_OpenVRCompositorListener_H_
 
+#include <experimental/filesystem>
+
 #include "OgreFrameListener.h"
 #include "Compositor/OgreCompositorWorkspaceListener.h"
-#include "OgreFrameListener.h"
-
-#include "opencv2/opencv.hpp"
-
+#include "OgreStagingTexture.h"
 
 #include "OgreMatrix4.h"
 #include "OgreCamera.h"
+
+#include "opencv2/opencv.hpp"
 
 #if __cplusplus <= 199711L
     #ifndef nullptr
@@ -25,6 +26,8 @@
         #undef nullptr
     #endif
 #endif
+
+namespace fs = std::experimental::filesystem;
 
 namespace Demo
 {
@@ -114,8 +117,10 @@ namespace Demo
     {
     public:
         enum InputType {
+            ROS,
             VIDEO,
-            IMG_SERIES
+            IMG_SERIES,
+            IMG_TIMESTAMP
         };
 
     protected:
@@ -145,6 +150,7 @@ namespace Demo
         bool                    mMustSyncAtEndOfFrame;
 
         void initVideoInput();
+        void initImgsTimestamp();
 
         static Ogre::Matrix4 convertSteamVRMatrixToMatrix4( vr::HmdMatrix34_t matPose );
         static Ogre::Matrix4 convertSteamVRMatrixToMatrix4( vr::HmdMatrix44_t matPose );
@@ -167,8 +173,15 @@ namespace Demo
         //cols/rows
         float mImgRatio;
         size_t mImgWidthOrig;
-        size_t mImgHeightResize;
-        size_t mImgWidthResize;
+        size_t mImgWidthResize[2];
+        size_t mImgHeightResize[2];
+        cv::Mat* mImageOrig[2];
+        cv::Mat* mImageResize[2];
+        Ogre::uint8 *mImageData;
+        Ogre::StagingTexture *mStagingTexture;
+
+        int mMagicCnt;
+        int mImageCnt;
         bool calcAlign();
 
         bool fillTexture(void);
@@ -176,8 +189,7 @@ namespace Demo
         cv::Mat mMat;
         int mCaptureFrameWidth, mCaptureFrameHeight,
             mCaptureFramePixelFormat;
-        int mImageCnt;
-        int mMagicCnt;
+        fs::directory_iterator mFileIteratorLeft;
         bool mWriteTexture;
         bool mNextPict;
 

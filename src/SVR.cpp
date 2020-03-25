@@ -22,15 +22,6 @@
 
 using namespace Demo;
 
-void createSystems( SVRGameState **outGraphicsGameState,
-                    SVRGraphicsSystem **outGraphicsSystem,
-                    bool configDialog
-                  );
-void destroySystems( SVRGameState *graphicsGameState,
-                     SVRGraphicsSystem *graphicsSystem);
-const char* getWindowTitle(void);
-
-
 int main( int argc, const char *argv[] )
 {
     SVRGameState *graphicsGameState = 0;

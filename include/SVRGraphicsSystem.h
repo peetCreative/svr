@@ -75,7 +75,7 @@ namespace Demo
 
         Ogre::TextureGpu            *mVrTexture;
         Ogre::Camera                *mVrCullCamera;
-        
+
         Demo::OpenVRCompositorListener    *mOvrCompositorListener;
 
         //Graphics System
@@ -84,7 +84,6 @@ namespace Demo
 #if OGRE_USE_SDL2
         void handleWindowEvent( const SDL_Event& evt );
 #endif
-        
         /// @see MessageQueueSystem::processIncomingMessage
         // Keep this, for when we reintroduce a logic frame
         virtual void processIncomingMessage(
@@ -97,6 +96,8 @@ namespace Demo
 
         virtual void setupResources(void);
         virtual void loadResources(void);
+
+        void registerHlms(void);
 
         virtual void chooseSceneManager(void);
         virtual void createCamera(void);
@@ -117,7 +118,7 @@ namespace Demo
             vr::TrackedPropertyError *peError = NULL );
         void initOpenVR(void);
         void initCompositorVR(void);
-//         void createHiddenAreaMeshVR(void);
+        void createHiddenAreaMeshVR(void);
 
     public:
         SVRGraphicsSystem(
