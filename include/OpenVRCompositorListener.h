@@ -179,7 +179,6 @@ namespace Demo
         Ogre::uint8 *mImageData;
         Ogre::StagingTexture *mStagingTexture;
 
-        int mMagicCnt;
         int mImageCnt;
         bool calcAlign();
 

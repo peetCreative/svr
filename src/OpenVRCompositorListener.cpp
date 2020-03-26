@@ -56,7 +56,6 @@ namespace Demo
         mImgWidthResize{0,0},
         mImgHeightResize{0,0},
         mImageOrig{nullptr, nullptr},
-        mMagicCnt(0),
         mImageCnt(0)
     {
         memset( mTrackedDevicePose, 0, sizeof( mTrackedDevicePose ) );
@@ -418,10 +417,6 @@ namespace Demo
 
     bool OpenVRCompositorListener::fillTexture(void)
     {
-        if (mMagicCnt-- != 0) {
-            return false;
-        }
-
         const size_t bytesPerPixel = 4u;
         const size_t bytesPerRow =
             mVrTexture->_getSysRamCopyBytesPerRow( 0 );
@@ -575,7 +570,6 @@ namespace Demo
         //loading is done; and any registered listeners will be notified.
         mVrTexture->notifyDataIsReady();
         
-        mMagicCnt = 1;
         return true;
     }
     //-------------------------------------------------------------------------
