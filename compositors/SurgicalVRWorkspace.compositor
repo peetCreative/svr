@@ -2,48 +2,48 @@ compositor_node SVRNode
 {
 	in 0 rtt
 // 
-// // 	texture rtt target_width target_height target_format msaa 4
-// 
-// 	target rtt
-// 	{
-// 		//Eye render
-// 		pass render_scene
-// 		{
-// 			load
-// 			{
-// // 				all		clear
-// // 				clear_colour	0.0 0.0 1.0 1.0
-// 			}
-// 			store
-// 			{
-// 				depth	dont_care
-// 				stencil	dont_care
-// 			}
-// 
-// 			//0x01234567
-// 			identifier 19088743
-// 
-// 			overlays	off
-// 
-// 			cull_camera VrCullCamera
-// 
-// 			shadows	off
-// 			//ShadowMapDebuggingShadowNode
-// 
-// 			instanced_stereo true
-// 			viewport 0 0.0 0.0 0.5 1.0
-// 			viewport 1 0.5 0.0 0.5 1.0
-// 		}
-// 
-// 		//Render overlays last on the entire screen
-// 		pass render_scene
-// 		{
-// 			rq_first	254
-// 			rq_last		255
-// 
-// 			overlays	on
-// 		}
-// 	}
+// 	texture rtt target_width target_height target_format msaa 4
+
+	target rtt
+	{
+		//Eye render
+		pass render_scene
+		{
+			load
+			{
+// 				all		clear
+// 				clear_colour	0.0 0.0 1.0 1.0
+			}
+			store
+			{
+				depth	dont_care
+				stencil	dont_care
+			}
+
+			//0x01234567
+			identifier 19088743
+
+			overlays	off
+
+			cull_camera VrCullCamera
+
+			shadows	off
+			//ShadowMapDebuggingShadowNode
+
+			instanced_stereo true
+			viewport 0 0.0 0.0 0.5 1.0
+			viewport 1 0.5 0.0 0.5 1.0
+		}
+
+		//Render overlays last on the entire screen
+		pass render_scene
+		{
+			rq_first	254
+			rq_last		255
+
+			overlays	on
+		}
+	}
 
 // 	out 0 rtt
 // 	target stereo_output

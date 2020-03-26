@@ -742,7 +742,7 @@ namespace Demo {
         mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
 
         Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
-        if(compositorManager->hasWorkspaceDefinition("SVRWorkspace"))
+        if(!compositorManager->hasWorkspaceDefinition("SVRWorkspace"))
             std::cout << "no Workspace"<< std::endl;
         mVrWorkspace = compositorManager->addWorkspace(
             mSceneManager, mVrTexture, mCamera,

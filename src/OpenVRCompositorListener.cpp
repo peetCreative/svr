@@ -149,9 +149,13 @@ namespace Demo
         mRoot->removeFrameListener( this );
     }
 
-    void OpenVRCompositorListener::initVideoInput() {
+    bool OpenVRCompositorListener::initVideoInput() {
             mCapture.set(CV_CAP_PROP_MODE,  CV_CAP_MODE_RGB );
-            mCapture = VideoCapture("/tmp/Video.avi");
+            mCapture = VideoCapture("/home/peetcreative/SurgicalData/ForPeter/Video.avi");
+            if (!mCapture.isOpened()) {
+                std::cout << "Video could not be opened" << std::endl;
+                return false;
+            }
             // Default resolution of the frame is obtained.The default resolution is system dependent.
             mCaptureFrameWidth =
                 mCapture.get(CV_CAP_PROP_FRAME_WIDTH);
@@ -159,6 +163,7 @@ namespace Demo
                 mCapture.get(CV_CAP_PROP_FRAME_HEIGHT);
             mCaptureFramePixelFormat =
                 mCapture.get(CV_CAP_PROP_FORMAT);
+            return true;
     }
 
     void OpenVRCompositorListener::initImgsTimestamp() {
@@ -367,6 +372,12 @@ namespace Demo
             mImageOrig[0] = nullptr;
             mImageOrig[1] = nullptr;
         }
+        else if ( mInputType == VIDEO)
+        {
+            Size origSize(1920, 540);
+            mImageOrig[0] = new Mat(origSize, CV_8UC3);
+            mImageOrig[1] = new Mat(origSize, CV_8UC3);
+        }
         else
         {
             Size origSize(img_size_x, img_size_y);
@@ -423,6 +434,8 @@ namespace Demo
 //         }
         if(mInputType == VIDEO)
         {
+            cv::Mat mMat;
+
             // Capture frame-by-frame
             mCapture >> mMat; //1920/1080
             //std::cout <<"type:" << std::endl;
@@ -431,6 +444,10 @@ namespace Demo
             //<< " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
             //<< std::endl;
             //1920x540
+           if(mMat.empty())
+            {
+                return false;
+            }
             cv::Rect lrect(0,540, 1920, 540);
             cv::Rect rrect(0,0, 1920, 540);
             *mImageOrig[0] = mMat(lrect);

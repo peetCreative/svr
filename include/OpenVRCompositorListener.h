@@ -149,7 +149,7 @@ namespace Demo
         Ogre::Real              mLastCamFar;
         bool                    mMustSyncAtEndOfFrame;
 
-        void initVideoInput();
+        bool initVideoInput();
         void initImgsTimestamp();
 
         static Ogre::Matrix4 convertSteamVRMatrixToMatrix4( vr::HmdMatrix34_t matPose );
@@ -185,7 +185,6 @@ namespace Demo
 
         bool fillTexture(void);
         cv::VideoCapture mCapture;
-        cv::Mat mMat;
         int mCaptureFrameWidth, mCaptureFrameHeight,
             mCaptureFramePixelFormat;
         fs::directory_iterator mFileIteratorLeft;
