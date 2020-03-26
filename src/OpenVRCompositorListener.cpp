@@ -92,10 +92,6 @@ namespace Demo
         const Ogre::String &renderSystemName = mRenderSystem->getName();
         if( renderSystemName == "OpenGL 3+ Rendering Subsystem" )
             mApiTextureType = vr::TextureType_OpenGL;
-        else if( renderSystemName == "Direct3D11 Rendering Subsystem" )
-            mApiTextureType = vr::TextureType_DirectX;
-        else if( renderSystemName == "Metal Rendering Subsystem" )
-            mApiTextureType = vr::TextureType_Metal;
         mNextPict = true;
         mWriteTexture = true;
 
