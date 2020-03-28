@@ -45,6 +45,7 @@
 
 #include "OgreTextureGpuManager.h"
 
+#include <experimental/filesystem>
 #include <iostream>
 
 #if OGRE_USE_SDL2
@@ -69,19 +70,17 @@ namespace Demo {
         mSceneManager( 0 ),
         mCamera( 0 ),
         mVrWorkspace( 0 ),
-        mPluginsFolder( "./" ),
+        mPluginsFolder( PLUGINS_FOLDER ),
         mOverlaySystem( 0 ),
         mAccumTimeSinceLastLogicFrame( 0 ),
 //         mCurrentTransformIdx( 0 ),
         mQuit( false ),
         mAlwaysAskForConfig( askForConfig ),
         mBackgroundColour( backgroundColour ),
-        
         mHMD( 0 ),
         mVrTexture( 0 ),
         mVrCullCamera( 0 ),
         mOvrCompositorListener( 0 )
-    
     {
         if( isWriteAccessFolder( mPluginsFolder, "Ogre.log" ) )
             mWriteAccessFolder = mPluginsFolder;
@@ -91,7 +90,7 @@ namespace Demo {
             mWriteAccessFolder = filesystemLayer.getWritablePath( "" );
         }
         memset( mTrackedDevicePose, 0, sizeof (mTrackedDevicePose) );
-        mResourcePath = "../Data/";
+        mResourcePath = RESOURCE_PATH;
     }
     //-----------------------------------------------------------------------------------
     SVRGraphicsSystem::~SVRGraphicsSystem()
@@ -119,7 +118,7 @@ namespace Demo {
         Ogre::String pluginsPath;
         // only use plugins.cfg if not static
     #ifndef OGRE_STATIC_LIB
-    #if OGRE_DEBUG_MODE && !((OGRE_PLATFORM == OGRE_PLATFORM_APPLE) || (OGRE_PLATFORM == OGRE_PLATFORM_APPLE_IOS))
+    #if OGRE_DEBUG_MODE
         pluginsPath = mPluginsFolder + "plugins_d.cfg";
     #else
         pluginsPath = mPluginsFolder + "plugins.cfg";
@@ -139,7 +138,6 @@ namespace Demo {
             Ogre::RenderSystem* rs = *pRend;
             rs->setConfigOption("sRGB Gamma Conversion", "Yes");
         }
-
 
         if( mAlwaysAskForConfig || !mRoot->restoreConfig() )
         {
@@ -742,8 +740,6 @@ namespace Demo {
         mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
 
         Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
-        if(!compositorManager->hasWorkspaceDefinition("SVRWorkspace"))
-            std::cout << "no Workspace"<< std::endl;
         mVrWorkspace = compositorManager->addWorkspace(
             mSceneManager, mVrTexture, mCamera,
             "SVRWorkspace",

@@ -1,4 +1,9 @@
 #include "SVR.h"
+#include "ROSSVR.h"
+
+#include "OgreCommon/SdlInputHandler.h"
+#include "OgreWindow.h"
+#include "OgreTimer.h"
 
 #include <pluginlib/class_list_macros.h>
 #include <cv_bridge/cv_bridge.h>
@@ -12,15 +17,14 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 
-
+#include <iostream>
 
 PLUGINLIB_EXPORT_CLASS( ROSSVRNodelet, nodelet::Nodelet )
 
-
-ROSSVRNodelet::ROSSVRNodelet():
-    graphicsGameState(0),
-    graphicsSystem(0)
-
+ROSSVRNodelet::ROSSVRNodelet()
+:
+    graphicsGameState(nullptr),
+    graphicsSystem(nullptr)
 {
 }
 
@@ -29,20 +33,23 @@ void ROSSVRNodelet::onInit()
     NODELET_DEBUG("Initializing ROSSVRNodelet...");
     ros::NodeHandle& nh = getNodeHandle();
 
-    mSubImageLeft = new message_filters::Subscriber<PoseStamped>(
+    mSubImageLeft = new message_filters::Subscriber<sensor_msgs::Image>(
         nh, "left/image_rect", 20);
-    mSubImageRight = new message_filters::Subscriber<PoseStamped>(
-        nh, "rightimage_rect", 20);
-    mSubCamInfo = nh.subscribe(
-        "camera_info", 10, &ROSSVRNodelet::newCameraInfoCallback, this);
+    mSubImageRight = new message_filters::Subscriber<sensor_msgs::Image>(
+        nh, "right/image_rect", 20);
+    mSubCamInfoLeft = nh.subscribe(
+        "left/camera_info", 1, &ROSSVRNodelet::newCameraInfoCallbackLeft, this);
+    mSubCamInfoRight = nh.subscribe(
+        "right/camera_info", 1, &ROSSVRNodelet::newCameraInfoCallbackRight, this);
 
     mApproximateSync.reset(
-        new ApproximateSync(ApproximatePolicy(queue_size),
+        new ApproximateSync(ApproximatePolicy(20),
         *mSubImageLeft, *mSubImageRight));
-    mApproximateSync->registerCallback(std::bind(
-        &ROSSVRNodelet::newImageCallback, this, _1, _2));
+    mApproximateSync->registerCallback(
+        boost::bind( &ROSSVRNodelet::newImageCallback, this, _1, _2));
 
-    ros::NodeHandle& nhPriv = getPrivateNodeHandle();
+//     ros::NodeHandle& nhPriv = getPrivateNodeHandle();
+    createSystems( &graphicsGameState, &graphicsSystem, false );
 
     try
     {
@@ -54,30 +61,36 @@ void ROSSVRNodelet::onInit()
 
             destroySystems( graphicsGameState, graphicsSystem);
 
-            return 0; //User cancelled config
+            return; //User cancelled config
         }
 
-        Ogre::Window *renderWindow = graphicsSystem->getRenderWindow();
+        mRenderWindow = graphicsSystem->getRenderWindow();
 
         graphicsSystem->createScene01();
 
-
     #if OGRE_USE_SDL2
         //Do this after creating the scene for easier the debugging (the mouse doesn't hide itself)
-        SdlInputHandler *inputHandler = graphicsSystem->getInputHandler();
-        inputHandler->setGrabMousePointer( true );
-        inputHandler->setMouseVisible( false );
-        inputHandler->setMouseRelative( true );
+        SdlInputHandler *mInputHandler = graphicsSystem->getInputHandler();
+        mInputHandler->setGrabMousePointer( true );
+        mInputHandler->setMouseVisible( false );
+        mInputHandler->setMouseRelative( true );
     #endif
-
-        Ogre::Timer timer;
-        Ogre::uint64 startTime = timer.getMicroseconds();
-        double accumulator = 1.0 / 60.0;
-
-        double timeSinceLast = 1.0 / 60.0;
+        mTimer = Ogre::Timer();
+        mStartTime = mTimer.getMicroseconds();
+        mTimeSinceLast = 0;
     }
-}
+    catch( Ogre::Exception &e )
+    {
+    //TODO: Do sth more intelligent
+        destroySystems( graphicsGameState, graphicsSystem );
+        throw e;
+    }
+    catch( ... )
+    {
+        destroySystems( graphicsGameState, graphicsSystem );
+    }
 
+}
 
 void ROSSVRNodelet::newImageCallback(
     const sensor_msgs::Image::ConstPtr& imgLeft,
@@ -101,23 +114,16 @@ void ROSSVRNodelet::newImageCallback(
     {
         graphicsSystem->beginFrameParallel();
         graphicsSystem->getOvrCompositorListener()->setImgPtr(
-            &(imgLeft->image), &(imgRight->image));
-        graphicsSystem->update( static_cast<float>( timeSinceLast ) );
-        graphicsSystem->getOvrCompositorListener()->setImgPtr(
-            nullptr);
+            &(cv_ptr_left->image), &(cv_ptr_right->image));
+        graphicsSystem->update( static_cast<float>( mTimeSinceLast ) );
         graphicsSystem->finishFrameParallel();
 
-        if( !renderWindow->isVisible() )
-        {
-            //Don't burn CPU cycles unnecessary when we're minimized.
-            Ogre::Threads::Sleep( 500 );
-        }
-
-        Ogre::uint64 endTime = timer.getMicroseconds();
-        timeSinceLast = (endTime - startTime) / 1000000.0;
-        timeSinceLast = std::min( 1.0, timeSinceLast ); //Prevent from going haywire.
-        accumulator += timeSinceLast;
-        startTime = endTime;
+        //TODO: must maybe be calculated before?
+        Ogre::uint64 endTime = mTimer.getMicroseconds();
+        mTimeSinceLast = (endTime - mStartTime) / 1000000.0;
+        mTimeSinceLast = std::min( 1.0, timeSinceLast ); //Prevent from going haywire.
+        accumulator += mTimeSinceLast;
+        mStartTime = endTime;
         if(graphicsSystem->getQuit())
         {
             graphicsSystem->destroyScene();
@@ -136,50 +142,26 @@ void ROSSVRNodelet::newImageCallback(
     }
 }
 
-void ROSSVRNodelet::newCameraInfoCallback(
+void ROSSVRNodelet::newCameraInfoCallbackLeft(
     const sensor_msgs::CameraInfo::ConstPtr& camInfo )
 {
-    graphicsSystem->setCameraConfig(
-        camInfo->width,
-        camInfo->height,
-        camInfo->K
-    );
+    newCameraInfoCallback(camInfo, LEFT);
+}
+void ROSSVRNodelet::newCameraInfoCallbackRight(
+    const sensor_msgs::CameraInfo::ConstPtr& camInfo )
+{
+    newCameraInfoCallback(camInfo, RIGHT);
 }
 
-
-namespace nodelet_ROSSVR
+void ROSSVRNodelet::newCameraInfoCallback(
+    const sensor_msgs::CameraInfo::ConstPtr& camInfo,
+    int leftOrRight)
 {
-
-class ROSSVR : public nodelet::Nodelet
-{
-public:
-
-    ROSSVR() :
-        graphicsGameState(0),
-        graphicsSystem(0)
-    {}
-
-private:
-  virtual void onInit()
-  {
-    ros::NodeHandle& private_nh = getPrivateNodeHandle();
-    private_nh.getParam("value", value_);
-    sub = private_nh.subscribe("resize", 10, &ROSSVR::callback, this);
-    std_msgs::Float64Ptr
-  }
-
-  void callback(const std_msgs::Float64::ConstPtr& input)
-  {
-    std_msgs::Float64Ptr output(new std_msgs::Float64());
-    output->data = input->data + value_;
-    NODELET_DEBUG("Adding %f to get %f", value_, output->data);
-    pub.publish(output);
-  }
-
-  ros::Publisher pub;
-  ros::Subscriber sub;
-  double value_;
-};
-
-PLUGINLIB_EXPORT_CLASS(nodelet_tutorial_math::ROSSVR, nodelet::Nodelet)
+    graphicsSystem->getOvrCompositorListener()->setCameraConfig(
+        camInfo->width,
+        camInfo->height,
+        camInfo->K[0], camInfo->K[4],
+        camInfo->K[2], camInfo->K[5],
+        leftOrRight
+    );
 }

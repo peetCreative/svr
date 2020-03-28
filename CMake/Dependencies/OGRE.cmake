@@ -46,7 +46,7 @@ macro( findPluginAndSetPath BUILD_TYPE CFG_VARIABLE LIBRARY_NAME )
 		endif()
 
 		# Copy the DLLs to the folders.
-		copyWithSymLink( ${REAL_LIB_PATH} "${CMAKE_SOURCE_DIR}/bin/${BUILD_TYPE}/Plugins" )
+		copyWithSymLink( ${REAL_LIB_PATH} "${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/Plugins" )
 	endif()
 endmacro()
 
@@ -56,15 +56,14 @@ endmacro()
 # that were not built
 # Copies all relevant DLLs: RenderSystem files, OgreOverlay, Hlms PBS & Unlit.
 macro( setupPluginFileFromTemplate BUILD_TYPE OGRE_USE_SCENE_FORMAT )
-	file( MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${BUILD_TYPE}/Plugins" )
+	file( MAKE_DIRECTORY "${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/Plugins" )
 
-	findPluginAndSetPath( ${BUILD_TYPE} OGRE_PLUGIN_RS_D3D11	RenderSystem_Direct3D11 )
 	findPluginAndSetPath( ${BUILD_TYPE} OGRE_PLUGIN_RS_GL3PLUS	RenderSystem_GL3Plus )
 
 	if( ${BUILD_TYPE} STREQUAL "Debug" )
-		configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/Plugins.cfg.in ${CMAKE_SOURCE_DIR}/bin/${BUILD_TYPE}/plugins_d.cfg )
+		configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/Plugins.cfg.in ${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/plugins_d.cfg )
 	else()
-		configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/Plugins.cfg.in ${CMAKE_SOURCE_DIR}/bin/${BUILD_TYPE}/plugins.cfg )
+		configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/Plugins.cfg.in ${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/plugins.cfg )
 	endif()
 
 	if( CMAKE_BUILD_TYPE )
@@ -73,7 +72,6 @@ macro( setupPluginFileFromTemplate BUILD_TYPE OGRE_USE_SCENE_FORMAT )
 		endif()
 	endif()
 
-	unset( OGRE_PLUGIN_RS_D3D11 )
 	unset( OGRE_PLUGIN_RS_GL3PLUS )
 	unset( OGRE_BUILD_TYPE_MATCHES )
 endmacro()
@@ -82,27 +80,27 @@ endmacro()
 
 # Creates Resources.cfg out of user-editable CMake/Templates/Resources.cfg.in
 function( setupResourceFileFromTemplate )
-	message( STATUS "Generating ${CMAKE_SOURCE_DIR}/bin/Data/resources2.cfg from template
-		${CMAKE_SOURCE_DIR}/CMake/Templates/Resources.cfg.in" )
-	set( OGRE_MEDIA_DIR "../" )
-	configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/Resources.cfg.in ${CMAKE_SOURCE_DIR}/bin/Data/resources2.cfg )
-	message( STATUS "Generating ${CMAKE_SOURCE_DIR}/bin/Data/HiddenAreaMeshVr.cfg from template
-		${CMAKE_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in" )
-	configure_file( ${CMAKE_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in ${CMAKE_SOURCE_DIR}/bin/Data/HiddenAreaMeshVr.cfg )
+	message( STATUS "Generating ${CMAKE_CURRENT_BIN_DIR}/Data/resources2.cfg from template
+		${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/Resources.cfg.in" )
+	set( OGRE_MEDIA_DIR "${CMAKE_CURRENT_BIN_DIR}/" )
+	configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/Resources.cfg.in ${CMAKE_CURRENT_BIN_DIR}/Data/resources2.cfg )
+	message( STATUS "Generating ${CMAKE_CURRENT_BIN_DIR}/Data/HiddenAreaMeshVr.cfg from template
+		${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in" )
+	configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/HiddenAreaMeshVr.cfg.in ${CMAKE_CURRENT_BIN_DIR}/Data/HiddenAreaMeshVr.cfg )
 endfunction()
 
 #----------------------------------------------------------------------------------------
 
 function( setupOgreSamplesCommon )
 	message( STATUS "Copying OgreSamplesCommon cpp and header files to
-		${CMAKE_SOURCE_DIR}/include/OgreCommon
-		${CMAKE_SOURCE_DIR}/src/OgreCommon/" )
-	include_directories( "${CMAKE_SOURCE_DIR}/include/OgreCommon/" )
-	file( COPY "${OGRE_SOURCE}/Samples/2.0/Common/include/"	DESTINATION "${CMAKE_SOURCE_DIR}/include/OgreCommon/" )
-	file( COPY "${OGRE_SOURCE}/Samples/2.0/Common/src/"		DESTINATION "${CMAKE_SOURCE_DIR}/src/OgreCommon/" )
-	file( REMOVE_RECURSE "${CMAKE_SOURCE_DIR}/src/OgreCommon/System/Desktop" )
-	file( REMOVE "${CMAKE_SOURCE_DIR}/include/OgreCommon/System/MainEntryPoints.h" )
-	file( REMOVE "${CMAKE_SOURCE_DIR}/src/OgreCommon/System/MainEntryPoints.cpp" )
+		${CMAKE_CURRENT_SOURCE_DIR}/include/OgreCommon
+		${CMAKE_CURRENT_SOURCE_DIR}/src/OgreCommon/" )
+	include_directories( "${CMAKE_CURRENT_SOURCE_DIR}/include/OgreCommon/" )
+	file( COPY "${OGRE_SOURCE}/Samples/2.0/Common/include/"	DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/include/OgreCommon/" )
+	file( COPY "${OGRE_SOURCE}/Samples/2.0/Common/src/"		DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/src/OgreCommon/" )
+	file( REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/src/OgreCommon/System/Desktop" )
+	file( REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/include/OgreCommon/System/MainEntryPoints.h" )
+	file( REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/src/OgreCommon/System/MainEntryPoints.cpp" )
 
 endfunction()
 
@@ -110,8 +108,9 @@ endfunction()
 
 # Main call to setup Ogre.
 macro( setupOgre OGRE_SOURCE, OGRE_BINARIES, OGRE_LIBRARIES_OUT,
-		OGRE_USE_SCENE_FORMAT )
+		OGRE_USE_SCENE_FORMAT)
 
+MESSAGE("${CMAKE_CURRENT_BIN_DIR}")
 set( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/Ogre/CMake/Packages" )
 
 # Guess the paths.
@@ -201,13 +200,13 @@ set( OGRE_LIBRARIES_OUT ${OGRE_LIBRARIES} )
 set( OGRE_PLUGIN_DIR "Plugins" )
 
 message( STATUS "Copying Hlms data files from Ogre repository" )
-file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Common"	DESTINATION "${CMAKE_SOURCE_DIR}/bin/Data/Hlms" )
-file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Pbs"		DESTINATION "${CMAKE_SOURCE_DIR}/bin/Data/Hlms" )
-file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Unlit"	DESTINATION "${CMAKE_SOURCE_DIR}/bin/Data/Hlms" )
+file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Common"	DESTINATION "${CMAKE_CURRENT_BIN_DIR}/Data/Hlms" )
+file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Pbs"		DESTINATION "${CMAKE_CURRENT_BIN_DIR}/Data/Hlms" )
+file( COPY "${OGRE_SOURCE}/Samples/Media/Hlms/Unlit"	DESTINATION "${CMAKE_CURRENT_BIN_DIR}/Data/Hlms" )
 
 message( STATUS "Copying Common data files from Ogre repository" )
-file( COPY "${OGRE_SOURCE}/Samples/Media/2.0/scripts/materials/Common"	DESTINATION "${CMAKE_SOURCE_DIR}/bin/Data/Materials" )
-file( COPY "${OGRE_SOURCE}/Samples/Media/packs/DebugPack.zip"	DESTINATION "${CMAKE_SOURCE_DIR}/bin/Data" )
+file( COPY "${OGRE_SOURCE}/Samples/Media/2.0/scripts/materials/Common"	DESTINATION "${CMAKE_CURRENT_BIN_DIR}/Data/Materials" )
+file( COPY "${OGRE_SOURCE}/Samples/Media/packs/DebugPack.zip"	DESTINATION "${CMAKE_CURRENT_BIN_DIR}/Data" )
 
 message( STATUS "Copying DLLs and generating Plugins.cfg for Debug" )
 setupPluginFileFromTemplate( "Debug" ${OGRE_USE_SCENE_FORMAT} )

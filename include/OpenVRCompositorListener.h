@@ -117,7 +117,7 @@ namespace Demo
     {
     public:
         enum InputType {
-            ROS,
+            CONST_MAT,
             VIDEO,
             IMG_SERIES,
             IMG_TIMESTAMP
@@ -168,14 +168,22 @@ namespace Demo
             int rightLeft;
             int rightTop;
         } mAlign;
+        struct CameraConfig {
+            float width;
+            float height;
+            float f_x;
+            float f_y;
+            float c_x;
+            float c_y;
+        } mCameraConfig[2];
         //of vr height
         float mImgScale;
         //cols/rows
         float mImgRatio;
         size_t mImgWidthOrig;
-        size_t mImgWidthResize[2];
-        size_t mImgHeightResize[2];
+        cv::Size mImageResizeSize[2];
         cv::Mat* mImageOrig[2];
+        cv::Mat mImageResize[2];
         Ogre::uint8 *mImageData;
         Ogre::StagingTexture *mStagingTexture;
 
@@ -188,7 +196,6 @@ namespace Demo
             mCaptureFramePixelFormat;
         fs::directory_iterator mFileIteratorLeft;
         bool mWriteTexture;
-        bool mNextPict;
 
         InputType mInputType;
     public:
@@ -222,7 +229,12 @@ namespace Demo
         {mWriteTexture = true;};
         float getImgScale();
         void setImgScale(float imgScale);
-        void setImgPtr(cv::Mat *left, cv::Mat *right);
+        void setImgPtr(const cv::Mat *left, const cv::Mat *right);
+        void setCameraConfig(
+            float width, float height,
+            float f_x, float f_y,
+            float c_x, float c_y,
+            int leftOrRightCam);
 
         /** When operating in VrWaitingMode::AfterSceneGraph or later, there's a chance
             graphical artifacts appear if the camera transform is immediately changed after

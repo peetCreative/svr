@@ -1,5 +1,6 @@
 
 #include "OpenVRCompositorListener.h"
+#include "SVR.h"
 
 #include "OgreTextureGpuManager.h"
 #include "OgrePixelFormatGpuUtils.h"
@@ -53,8 +54,7 @@ namespace Demo
         mMustSyncAtEndOfFrame( false ),
         mImgScale(0.3),
         mImgRatio(640/512.0),
-        mImgWidthResize{0,0},
-        mImgHeightResize{0,0},
+        mImageResizeSize{Size(0,0), Size(0,0)},
         mImageOrig{nullptr, nullptr},
         mImageCnt(0)
     {
@@ -66,7 +66,22 @@ namespace Demo
         mAlign.rightLeft = 0;
         mAlign.rightTop = 0;
 
-        mInputType = IMG_TIMESTAMP;
+        //TODO: read the correct camera calibration info
+        //DUMMY CAMERACALIBRATION READ CORRECT ONE
+        mCameraConfig[LEFT].width = 640;
+        mCameraConfig[LEFT].height = 512;
+        mCameraConfig[LEFT].f_x = 534.195;
+        mCameraConfig[LEFT].f_y = 534.095;
+        mCameraConfig[LEFT].c_x = 300.45;
+        mCameraConfig[LEFT].c_y = 250.37;
+        mCameraConfig[RIGHT].width = 640;
+        mCameraConfig[RIGHT].height = 512;
+        mCameraConfig[RIGHT].f_x = 533.915;
+        mCameraConfig[RIGHT].f_y = 533.8;
+        mCameraConfig[RIGHT].c_x = 349.11;
+        mCameraConfig[RIGHT].c_y = 250.825;
+
+        mInputType = VIDEO;
         if(mInputType == VIDEO)
             initVideoInput();
         else if (mInputType == IMG_TIMESTAMP)
@@ -92,7 +107,6 @@ namespace Demo
         const Ogre::String &renderSystemName = mRenderSystem->getName();
         if( renderSystemName == "OpenGL 3+ Rendering Subsystem" )
             mApiTextureType = vr::TextureType_OpenGL;
-        mNextPict = true;
         mWriteTexture = true;
 
 
@@ -295,18 +309,6 @@ namespace Demo
             mImgRatio =  640/512.0;
         }
 
-        //TODO: read the correct camera calibration info
-        //DUMMY CAMERACALIBRATION READ CORRECT ONE
-        float img_size_x = 640;
-        float img_size_y = 512;
-        float f_x_left = 534.195;
-        float f_y_left = 534.095;
-        float c_x_left = 300.45;
-        float c_y_left = 250.37;
-        float f_x_right = 533.915;
-        float f_y_right = 533.8;
-        float c_x_right = 349.11;
-        float c_y_right = 250.825;
 
         //now we have to know
         size_t vr_width_half = mVrTexture->getWidth()/2;
@@ -327,10 +329,21 @@ namespace Demo
         float  img_middle_resize[4];
         size_t vr_size[4] = {vr_width_half, vr_width_half,
             mVrTexture->getHeight(), mVrTexture->getHeight()};
-        float img_size[4] = {img_size_x, img_size_x,
-            img_size_y, img_size_y};
-        float f_cam[4] = {f_x_left, f_x_right, f_y_left, f_y_right};
-        float c_cam[4] = {c_x_left, c_x_right, c_y_left, c_y_right};
+        float img_size[4] = {
+            mCameraConfig[LEFT].width,
+            mCameraConfig[RIGHT].width,
+            mCameraConfig[LEFT].height,
+            mCameraConfig[RIGHT].height};
+        float f_cam[4] = {
+            mCameraConfig[LEFT].f_x,
+            mCameraConfig[RIGHT].f_x,
+            mCameraConfig[LEFT].f_y,
+            mCameraConfig[RIGHT].f_y};
+        float c_cam[4] = {
+            mCameraConfig[LEFT].c_x,
+            mCameraConfig[RIGHT].c_x,
+            mCameraConfig[LEFT].c_y,
+            mCameraConfig[RIGHT].c_y};
 
         mHMD->GetProjectionRaw(
             vr::Eye_Left, &tan[0][0], &tan[0][1], &tan[2][0], &tan[2][1]);
@@ -354,36 +367,41 @@ namespace Demo
             align[i] = static_cast<size_t>(std::round(align_f));
             OGRE_ASSERT_MSG(img_size_resize[i] > 0, "img_height_resize smaller than zero");
             if (i < 2) {
-                mImgWidthResize[i%2] =
+                mImageResizeSize[i%2].width =
                     static_cast<size_t>(std::round(img_size_resize[i]));
             } else {
-                mImgHeightResize[i%2] =
+                mImageResizeSize[i%2].height =
                     static_cast<size_t>(std::round(img_size_resize[i]));
             }
         }
 
-        if (mInputType == ROS)
+        mImageResize[LEFT] = Mat();
+        mImageResize[RIGHT] = Mat();
+        if (mInputType == CONST_MAT)
         {
-            mImageOrig[0] = nullptr;
-            mImageOrig[1] = nullptr;
+            mImageOrig[LEFT] = nullptr;
+            mImageOrig[RIGHT] = nullptr;
         }
         else if ( mInputType == VIDEO)
         {
             Size origSize(1920, 540);
-            mImageOrig[0] = new Mat(origSize, CV_8UC3);
-            mImageOrig[1] = new Mat(origSize, CV_8UC3);
+            mImageOrig[LEFT] = new Mat(origSize, CV_8UC3);
+            mImageOrig[RIGHT] = new Mat(origSize, CV_8UC3);
         }
         else
         {
-            Size origSize(img_size_x, img_size_y);
-            mImageOrig[0] = new Mat(origSize, CV_8UC3);
-            mImageOrig[1] = new Mat(origSize, CV_8UC3);
+            Size origSizeLeft(
+                mCameraConfig[LEFT].width, mCameraConfig[LEFT].height);
+            Size origSizeRight(
+                mCameraConfig[RIGHT].width, mCameraConfig[RIGHT].height);
+            mImageOrig[LEFT] = new Mat(origSizeLeft, CV_8UC3);
+            mImageOrig[RIGHT] = new Mat(origSizeRight, CV_8UC3);
         }
 
-        std::cout <<"left  resize:" << mImgWidthResize[0] 
-            << " " << mImgHeightResize[0] << std::endl;
-        std::cout <<"right resize:" << mImgWidthResize[1] 
-            << " " << mImgHeightResize[1] << std::endl;
+        std::cout <<"left resize:" << mImageResizeSize[LEFT].width 
+            << " " << mImageResizeSize[LEFT].height << std::endl;
+        std::cout <<"right resize:" << mImageResizeSize[RIGHT].width 
+            << " " << mImageResizeSize[RIGHT].height << std::endl;
         mAlign.leftLeft = align[0];
         mAlign.rightLeft = vr_width_half + align[1];
         mAlign.leftTop = align[2];
@@ -400,10 +418,7 @@ namespace Demo
     //-------------------------------------------------------------------------
     bool OpenVRCompositorListener::frameStarted( const Ogre::FrameEvent& evt )
     {
-        if(mNextPict) {
-            fillTexture();
-            mNextPict = false;
-        }
+        fillTexture();
 
         if( mWaitingMode == VrWaitingMode::BeforeSceneGraph )
             updateHmdTrackingPose();
@@ -417,77 +432,69 @@ namespace Demo
         const size_t bytesPerRow =
             mVrTexture->_getSysRamCopyBytesPerRow( 0 );
 
-//         memset(mImageData, 25, dataSize);
-//         if (mInputType == ROS)
-//         {
-//             mImageOrig[0] = mLeftROSImgPtr;
-//             mImageOrig[1] = mRightROSImgPtr;
-//         }
-        if(mInputType == VIDEO)
-        {
-            cv::Mat mMat;
+        if(mInputType != CONST_MAT) {
+            if(mInputType == VIDEO)
+            {
+                cv::Mat mMat;
 
-            // Capture frame-by-frame
-            mCapture >> mMat; //1920/1080
-            //std::cout <<"type:" << std::endl;
-            //std::cout <<"type:" << mCapture.get(CV_CAP_PROP_FORMAT ) << std::endl;
-            //<< " width:" << mCapture.get(CV_CAP_PROP_FRAME_WIDTH)
-            //<< " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
-            //<< std::endl;
-            //1920x540
-           if(mMat.empty())
+                // Capture frame-by-frame
+                mCapture >> mMat; //1920/1080
+                //std::cout <<"type:" << std::endl;
+                //std::cout <<"type:" << mCapture.get(CV_CAP_PROP_FORMAT ) << std::endl;
+                //<< " width:" << mCapture.get(CV_CAP_PROP_FRAME_WIDTH)
+                //<< " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
+                //<< std::endl;
+                //1920x540
+                if(mMat.empty())
+                {
+                    return false;
+                }
+                cv::Rect lrect(0,540, 1920, 540);
+                cv::Rect rrect(0,0, 1920, 540);
+                *mImageOrig[LEFT] = mMat(lrect);
+                *mImageOrig[RIGHT] = mMat(rrect);
+            }
+            if (mInputType == IMG_SERIES)
+            {
+                if (mImageCnt >= 1000)
+                    mImageCnt = 0;
+                std::stringstream ssl;
+                ssl << "/tmp/rect/left_undist_rect01"
+                    << std::setfill('0') << std::setw(3) << mImageCnt
+                    << ".png";
+                std::stringstream ssr;
+                ssr << "/tmp/rect/right_undist_rect01"
+                    << std::setfill('0') << std::setw(3) << mImageCnt
+                    << ".png";
+        //         std::cout << "fill texture with "<< ssl.str() << std::endl;
+        //         std::cout << "fill texture with "<< ssr.str() << std::endl;
+    //             mImageCnt++;
+                *mImageOrig[LEFT] = imread(ssl.str());
+                *mImageOrig[RIGHT] = imread(ssr.str());
+            }
+            if (mInputType == IMG_TIMESTAMP)
+            {
+                fs::directory_entry entry_left = *mFileIteratorLeft++;
+                std::string path_str_left = entry_left.path().string();
+                size_t pos_left = path_str_left.rfind("left");
+                std::string path_str_right = path_str_left.substr(0, pos_left) +
+                    "right" +
+                    path_str_left.substr(pos_left + 4, path_str_left.length());
+                fs::path path_right(path_str_right);
+                if(!exists(path_right))
+                    return false;
+                *mImageOrig[LEFT] = imread(path_str_right);
+                *mImageOrig[RIGHT] = imread(path_str_left);
+            }
+
+            if(mImageOrig[LEFT]->empty() || mImageOrig[RIGHT]->empty())
             {
                 return false;
             }
-            cv::Rect lrect(0,540, 1920, 540);
-            cv::Rect rrect(0,0, 1920, 540);
-            *mImageOrig[0] = mMat(lrect);
-            *mImageOrig[1] = mMat(rrect);
-        }
-        if (mInputType == IMG_SERIES)
-        {
-            if (mImageCnt >= 1000)
-                mImageCnt = 0;
-            std::stringstream ssl;
-            ssl << "/tmp/rect/left_undist_rect01"
-                << std::setfill('0') << std::setw(3) << mImageCnt
-                << ".png";
-            std::stringstream ssr;
-            ssr << "/tmp/rect/right_undist_rect01"
-                << std::setfill('0') << std::setw(3) << mImageCnt
-                << ".png";
-    //         std::cout << "fill texture with "<< ssl.str() << std::endl;
-    //         std::cout << "fill texture with "<< ssr.str() << std::endl;
-//             mImageCnt++;
-            *mImageOrig[0] = imread(ssl.str());
-            *mImageOrig[1] = imread(ssr.str());
-        }
-        if (mInputType == IMG_TIMESTAMP)
-        {
-            fs::directory_entry entry_left = *mFileIteratorLeft++;
-            std::string path_str_left = entry_left.path().string();
-            size_t pos_left = path_str_left.rfind("left");
-            std::string path_str_right = path_str_left.substr(0, pos_left) +
-                "right" +
-                path_str_left.substr(pos_left + 4, path_str_left.length());
-            fs::path path_right(path_str_right);
-            if(!exists(path_right))
-                return false;
-            *mImageOrig[0] = imread(path_str_right);
-            *mImageOrig[1] = imread(path_str_left);
-        }
 
-        if(mImageOrig[0]->empty() || mImageOrig[1]->empty())
-        {
-            return false;
+            resize(*mImageOrig[LEFT], mImageResize[LEFT], mImageResizeSize[LEFT]);
+            resize(*mImageOrig[RIGHT], mImageResize[RIGHT], mImageResizeSize[RIGHT]);
         }
-
-        Mat ldst = Mat();
-        Mat rdst = Mat();
-        Size leftSize = Size(mImgWidthResize[0],  mImgHeightResize[0]);
-        Size rightSize = Size(mImgWidthResize[1], mImgHeightResize[1]);
-        resize(*mImageOrig[0], ldst, leftSize);
-        resize(*mImageOrig[1], rdst, rightSize);
 
 //         std::cout << mVrTexture->getWidth() << std::endl;
 //         std::cout << mVrTexture->getHeight() << std::endl;
@@ -500,7 +507,7 @@ namespace Demo
 //         std::cout << "ldst.cols " << ldst.cols << std::endl;
 //         std::cout << "ldst.rows " << ldst.rows << std::endl;
 
-        if ( !ldst.empty() && !rdst.empty()) {
+        if ( !mImageResize[LEFT].empty() && !mImageResize[RIGHT].empty()) {
             size_t align_left;
             size_t align_top;
             Mat* dst;
@@ -508,18 +515,18 @@ namespace Demo
                 if (i == 0) {
                     align_left = mAlign.leftLeft;
                     align_top = mAlign.leftTop;
-                    dst = &ldst;
+                    dst = &mImageResize[LEFT];
                 }
                 else {
                     align_left =  mAlign.rightLeft;
                     align_top = mAlign.rightTop;
-                    dst = &rdst;
+                    dst = &mImageResize[RIGHT];
                 }
                 size_t row_cnt = align_top * bytesPerRow;
-                for (size_t y = 0; y < mImgHeightResize[i]; y++) {
+                for (size_t y = 0; y < mImageResizeSize[i].height; y++) {
                     size_t cnt = row_cnt + (align_left * bytesPerPixel);
                     uint8_t* img_row_ptr = dst->ptr<uint8_t>(y);
-                    for (size_t x = 0; x < mImgWidthResize[i]; x++) {
+                    for (size_t x = 0; x < mImageResizeSize[i].width; x++) {
                         mImageData[cnt++] = *(img_row_ptr+2);
                         mImageData[cnt++] = *(img_row_ptr+1);
                         mImageData[cnt++] = *img_row_ptr;
@@ -647,12 +654,25 @@ namespace Demo
         }
     }
 
-    void OpenVRCompositorListener::setImgPtr(cv::Mat *left, cv::Mat *right)
+    void OpenVRCompositorListener::setImgPtr(const cv::Mat *left, const cv::Mat *right)
     {
-        mImageOrig[0] = left;
-        mImageOrig[1] = right;
+        resize(*left, mImageResize[LEFT], mImageResizeSize[LEFT]);
+        resize(*right, mImageResize[RIGHT], mImageResizeSize[RIGHT]);
     }
 
+    void OpenVRCompositorListener::setCameraConfig(
+        float width, float height,
+        float f_x, float f_y,
+        float c_x, float c_y,
+        int leftOrRightCam)
+    {
+        mCameraConfig[leftOrRightCam].width = width;
+        mCameraConfig[leftOrRightCam].height = height;
+        mCameraConfig[leftOrRightCam].f_x = f_x;
+        mCameraConfig[leftOrRightCam].f_y = f_y;
+        mCameraConfig[leftOrRightCam].c_x = c_x;
+        mCameraConfig[leftOrRightCam].c_y = c_y;
+    }
 
     OpenVRCompositorListener::InputType
         OpenVRCompositorListener::getInputType()
