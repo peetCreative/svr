@@ -57,8 +57,7 @@
 namespace Demo {
     SVRGraphicsSystem::SVRGraphicsSystem(
             GameState *gameState,
-            bool askForConfig,
-            Ogre::ColourValue backgroundColour) :
+            bool askForConfig ) :
         BaseSystem( gameState ),
         mLogicSystem( 0 ),
     #if OGRE_USE_SDL2
@@ -76,7 +75,7 @@ namespace Demo {
 //         mCurrentTransformIdx( 0 ),
         mQuit( false ),
         mAlwaysAskForConfig( askForConfig ),
-        mBackgroundColour( backgroundColour ),
+        mBackgroundColour( Ogre::ColourValue( 0.2f, 0.4f, 0.6f ) ),
         mHMD( 0 ),
         mVrTexture( 0 ),
         mVrCullCamera( 0 ),
@@ -103,8 +102,10 @@ namespace Demo {
     }
 
         //-----------------------------------------------------------------------------------
-    void SVRGraphicsSystem::initialize( const Ogre::String &windowTitle )
+    void SVRGraphicsSystem::initialize(
+        InputType inputType, const Ogre::String &windowTitle )
     {
+        std::cout << "init graphics" << std::endl;
 #if OGRE_USE_SDL2
         //if( SDL_Init( SDL_INIT_EVERYTHING ) != 0 )
         if( SDL_Init( SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK |
@@ -260,11 +261,13 @@ namespace Demo {
         createCamera();
         mVrWorkspace = setupCompositor();
 
+        mOvrCompositorListener->setInputType(inputType);
     #if OGRE_USE_SDL2
         mInputHandler = new SdlInputHandler(
             mSdlWindow, mCurrentGameState,
             mCurrentGameState, mCurrentGameState );
     #endif
+
 
         BaseSystem::initialize();
 
@@ -369,7 +372,6 @@ namespace Demo {
             mInputHandler->_handleSdlEvents( evt );
         }
     #endif
-
         BaseSystem::update( timeSinceLast );
 
         if( mRenderWindow->isVisible() )
@@ -647,22 +649,28 @@ namespace Demo {
 
     Ogre::CompositorWorkspace* SVRGraphicsSystem::setupCompositor()
     {
-        Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
-#ifdef USE_OPEN_VR
+        mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
+        Ogre::CompositorWorkspace* vrCompositor = nullptr;
+        vr::IVRCompositor *vrCompositor3D = nullptr;
+        std::cout << "setupCompositor" << std::endl;
+        Ogre::CompositorManager2 *compositorManager =
+            mRoot->getCompositorManager2();
         initOpenVR();
 
         Ogre::CompositorChannelVec channels( 2u );
         channels[0] = mRenderWindow->getTexture();
         channels[1] = mVrTexture;
-        return compositorManager->addWorkspace(
+        vrCompositor = compositorManager->addWorkspace(
             mSceneManager, channels, mCamera,
-            "SVRMirrorWindowWorkspace", 
-            true );
-#else
-        return compositorManager->addWorkspace(
-            mSceneManager, mRenderWindow->getTexture(), mCamera,
-            "InstancedStereoWorkspace", true );
-#endif
+            "SVRMirrorWindowWorkspace", true );
+        vrCompositor3D =
+            vr::VRCompositor();
+        mOvrCompositorListener =
+            new Demo::OpenVRCompositorListener(
+                mHMD, vrCompositor3D, mVrTexture,
+                mRoot, mVrWorkspace,
+                mCamera, mVrCullCamera );
+        return vrCompositor;
     }
 
     //-----------------------------------------------------------------------------
@@ -692,16 +700,19 @@ namespace Demo {
     void SVRGraphicsSystem::initOpenVR(void)
     {
         // Loading the SteamVR Runtime
+        std::cout << "initOpenVR" << std::endl;
         vr::EVRInitError eError = vr::VRInitError_None;
         mHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
 
         if( eError != vr::VRInitError_None )
         {
-            mHMD = 0;
-            Ogre::String errorMsg = "Unable to init VR runtime: ";
-            errorMsg += vr::VR_GetVRInitErrorAsEnglishDescription( eError );
-            OGRE_EXCEPT( Ogre::Exception::ERR_RENDERINGAPI_ERROR, errorMsg,
-                         "SVRGraphicsSystem::initOpenVR" );
+            std::cout << "initOpenVR found error" << std::endl;
+            mHMD = nullptr;
+//             Ogre::String errorMsg = "Unable to init VR runtime: ";
+//             errorMsg += vr::VR_GetVRInitErrorAsEnglishDescription( eError );
+//             OGRE_EXCEPT(
+//                 Ogre::Exception::ERR_RENDERINGAPI_ERROR, errorMsg,
+//                 "SVRGraphicsSystem::initOpenVR" );
         }
 
         mStrDriver = "No Driver";
@@ -735,22 +746,18 @@ namespace Demo {
         new_width = width << 1u;
         mVrTexture->setResolution( new_width, height);
         mVrTexture->setPixelFormat( Ogre::PFG_RGBA8_UNORM );
-        mVrTexture->scheduleTransitionTo( Ogre::GpuResidency::Resident );
+        mVrTexture->scheduleTransitionTo(
+            Ogre::GpuResidency::Resident );
 
-        mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
-
-        Ogre::CompositorManager2 *compositorManager = mRoot->getCompositorManager2();
+        std::cout << "compositor" << std::endl;
+        Ogre::CompositorManager2 *compositorManager =
+            mRoot->getCompositorManager2();
         mVrWorkspace = compositorManager->addWorkspace(
-            mSceneManager, mVrTexture, mCamera,
-            "SVRWorkspace",
-            true, 0 );
+            mSceneManager, mVrTexture,
+            mCamera, "SVRWorkspace", true, 0 );
+        std::cout << "compositor after" << std::endl;
 
         createHiddenAreaMeshVR();
-
-        mOvrCompositorListener = new Demo::OpenVRCompositorListener(
-            mHMD, vr::VRCompositor(), vr::VROverlay(), mVrTexture,
-            mRoot, mVrWorkspace,
-            mCamera, mVrCullCamera );
     }
 
     void SVRGraphicsSystem::initCompositorVR(void)

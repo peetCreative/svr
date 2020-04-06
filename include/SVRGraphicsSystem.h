@@ -35,12 +35,12 @@
 namespace Demo
 {
     class SdlInputHandler;
+    class OpenVRCompositorListener;
 
     class SVRGraphicsSystem : public BaseSystem
     {
         BaseSystem          *mLogicSystem;
 
-        
 #if OGRE_USE_SDL2
         SDL_Window          *mSdlWindow;
         SdlInputHandler     *mInputHandler;
@@ -68,6 +68,7 @@ namespace Demo
         Ogre::ColourValue   mBackgroundColour;
 
         vr::IVRSystem *mHMD;
+        vr::IVRCompositor *mVRCompositor;
         std::string mStrDriver;
         std::string mStrDisplay;
         std::string mDeviceModelNumber;
@@ -76,7 +77,7 @@ namespace Demo
         Ogre::TextureGpu            *mVrTexture;
         Ogre::Camera                *mVrCullCamera;
 
-        Demo::OpenVRCompositorListener    *mOvrCompositorListener;
+        OpenVRCompositorListener    *mOvrCompositorListener;
 
         //Graphics System
         bool isWriteAccessFolder( const Ogre::String &folderPath, const Ogre::String &fileToSave );
@@ -123,14 +124,13 @@ namespace Demo
     public:
         SVRGraphicsSystem(
             GameState *gameState,
-            bool askForConfig,
-            Ogre::ColourValue backgroundColour = Ogre::ColourValue( 0.2f, 0.4f, 0.6f )
+            bool askForConfig
         );
         ~SVRGraphicsSystem();
 
         void _notifyLogicSystem( BaseSystem *logicSystem )      { mLogicSystem = logicSystem; }
 
-        void initialize( const Ogre::String &windowTitle );
+        void initialize( InputType inputType, const Ogre::String &windowTitle );
         void deinitialize(void);
 
         void setImgPtr();

@@ -241,11 +241,11 @@ namespace Demo
         {
             mGraphicsSystem->setQuit();
         }
-        else if(arg.keysym.scancode == SDL_SCANCODE_N)
-        {
-            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
-            ovrListener->toggleNextPict();
-        }
+//         else if(arg.keysym.scancode == SDL_SCANCODE_N)
+//         {
+//             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+//             ovrListener->toggleNextPict();
+//         }
         else if(arg.keysym.scancode == SDL_SCANCODE_M)
         {
             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
@@ -262,22 +262,6 @@ namespace Demo
             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
             float imgScale = ovrListener->getImgScale();
             ovrListener->setImgScale(imgScale + 0.05);
-        }
-        else if(arg.keysym.scancode == SDL_SCANCODE_X)
-        {
-            std::cout << "change to VIDEO!!!!!!!!!!" << std::endl;
-            OpenVRCompositorListener *ovrListener =
-                mGraphicsSystem->getOvrCompositorListener();
-            ovrListener->setInputType(
-                OpenVRCompositorListener::VIDEO);
-        }
-        else if(arg.keysym.scancode == SDL_SCANCODE_Y)
-        {
-            std::cout << "change to series!!!!!!!!!!" << std::endl;
-            OpenVRCompositorListener *ovrListener =
-                mGraphicsSystem->getOvrCompositorListener();
-            ovrListener->setInputType(
-                OpenVRCompositorListener::IMG_SERIES);
         }
         else
         {

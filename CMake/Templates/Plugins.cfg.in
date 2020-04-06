@@ -1,7 +1,7 @@
 # Defines plugins to load
 
 # Define plugin folder
-PluginFolder=@CMAKE_CURRENT_BIN_DIR@/@CMAKE_BUILD_TYPE@/@OGRE_PLUGIN_DIR@
+PluginFolder=@PLUGIN_PATH@
 
 # Define plugins
 @OGRE_PLUGIN_RS_D3D11@

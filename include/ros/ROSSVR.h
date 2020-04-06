@@ -1,6 +1,8 @@
 #ifndef ROSSVR_H
 #define ROSSVR_H
 
+#include "SVR.h"
+
 #include "OgreTimer.h"
 #include "OgreWindow.h"
 
@@ -13,15 +15,20 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+#include <thread>
+#include <memory>
+
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximatePolicy;
 typedef message_filters::Synchronizer<ApproximatePolicy> ApproximateSync;
 
-class ROSSVRNodelet : public nodelet::Nodelet
+class ROSSVR : public nodelet::Nodelet
 {
     public:
-        ROSSVRNodelet();
+        ROSSVR();
 
         virtual void onInit();
+        void mainloop();
 
         void newImageCallback(
             const sensor_msgs::Image::ConstPtr& imgLeft,
@@ -33,9 +40,6 @@ class ROSSVRNodelet : public nodelet::Nodelet
             const sensor_msgs::CameraInfo::ConstPtr& input);
 
     private:
-        SVRGameState *graphicsGameState;
-        SVRGraphicsSystem *graphicsSystem;
-
         message_filters::Subscriber<sensor_msgs::Image>* mSubImageLeft;
         message_filters::Subscriber<sensor_msgs::Image>* mSubImageRight;
         ros::Subscriber mSubCamInfoLeft;
@@ -43,18 +47,15 @@ class ROSSVRNodelet : public nodelet::Nodelet
 
         std::shared_ptr<ApproximateSync> mApproximateSync;
 
-        Ogre::Window *mRenderWindow;
-        Ogre::Timer mTimer;
-        Ogre::uint64 mStartTime;
-        Ogre::uint64 mTimeSinceLast;
+        volatile bool running_;               ///< device is running
+        std::shared_ptr<Demo::SVR> mSVR;
+        std::shared_ptr<std::thread> mSVRThread;
 
-        double accumulator = 1.0 / 60.0;
-
-
-        double timeSinceLast = 1.0 / 60.0;
+        bool mIsCameraInfoInit[2];
         void newCameraInfoCallback(
             const sensor_msgs::CameraInfo::ConstPtr& input,
             int leftOrRight);
+
 };
 
 #endif 

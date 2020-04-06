@@ -22,6 +22,7 @@
 #include <sstream>
 #include <cmath>
 #include <experimental/filesystem>
+#include <mutex>
 
 using namespace Ogre;
 using namespace cv;
@@ -31,13 +32,11 @@ namespace Demo
 {
     OpenVRCompositorListener::OpenVRCompositorListener(
             vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor3D,
-            vr::IVROverlay *vrCompositor2D,
             Ogre::TextureGpu *vrTexture, Ogre::Root *root,
             Ogre::CompositorWorkspace *workspace,
             Ogre::Camera *camera, Ogre::Camera *cullCamera ) :
         mHMD( hmd ),
         mVrCompositor3D( vrCompositor3D ),
-        mVrCompositor2D( vrCompositor2D ),
         mVrTexture( vrTexture ),
         mRoot( root ),
         mRenderSystem( root->getRenderSystem() ),
@@ -81,28 +80,31 @@ namespace Demo
         mCameraConfig[RIGHT].c_x = 349.11;
         mCameraConfig[RIGHT].c_y = 250.825;
 
-        mInputType = VIDEO;
+        mInputType = CONST_MAT;
         if(mInputType == VIDEO)
             initVideoInput();
         else if (mInputType == IMG_TIMESTAMP)
             initImgsTimestamp();
 
 
-        mCamera->setVrData( &mVrData );
-        syncCameraProjection( true );
-        calcAlign();
+        if(mHMD)
+        {
+            mCamera->setVrData( &mVrData );
+            syncCameraProjection( true );
+    //         calcAlign();
 
-        std::cout << "camera left to right " << mVrData.mLeftToRight.x <<
-            " "  << mVrData.mLeftToRight.y  << std::endl;
-        float left, right, top, bottom;
-        mHMD->GetProjectionRaw(vr::Eye_Left, &left, &right, &top, &bottom);
-        std::cout << "left camera tan left and right " << left << " " << right << std::endl;
-        std::cout << "left camera tan top and bottom " << top << " " << bottom << std::endl;
-        mHMD->GetProjectionRaw(vr::Eye_Right, &left, &right, &top, &bottom);
-        std::cout << "right camera tan left and right " << left << " " << right << std::endl;
-        std::cout << "right camera tan top and bottom " << top << " " << bottom << std::endl;
-        mRoot->addFrameListener( this );
-        mWorkspace->setListener( this );
+            std::cout << "camera left to right " << mVrData.mLeftToRight.x <<
+                " "  << mVrData.mLeftToRight.y  << std::endl;
+            float left, right, top, bottom;
+            mHMD->GetProjectionRaw(vr::Eye_Left, &left, &right, &top, &bottom);
+            std::cout << "left camera tan left and right " << left << " " << right << std::endl;
+            std::cout << "left camera tan top and bottom " << top << " " << bottom << std::endl;
+            mHMD->GetProjectionRaw(vr::Eye_Right, &left, &right, &top, &bottom);
+            std::cout << "right camera tan left and right " << left << " " << right << std::endl;
+            std::cout << "right camera tan top and bottom " << top << " " << bottom << std::endl;
+            mRoot->addFrameListener( this );
+            mWorkspace->setListener( this );
+        }
 
         const Ogre::String &renderSystemName = mRenderSystem->getName();
         if( renderSystemName == "OpenGL 3+ Rendering Subsystem" )
@@ -414,18 +416,6 @@ namespace Demo
 //         std::cout << "Align rightLeft:" << mAlign.rightLeft << std::endl;
 //         std::cout << "Align rightTop:" << mAlign.rightTop << std::endl;
     }
-
-    //-------------------------------------------------------------------------
-    bool OpenVRCompositorListener::frameStarted( const Ogre::FrameEvent& evt )
-    {
-        fillTexture();
-
-        if( mWaitingMode == VrWaitingMode::BeforeSceneGraph )
-            updateHmdTrackingPose();
-
-        return true;
-    }
-
     bool OpenVRCompositorListener::fillTexture(void)
     {
         const size_t bytesPerPixel = 4u;
@@ -540,11 +530,7 @@ namespace Demo
 //         mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
         mVrTexture->_setNextResidencyStatus( GpuResidency::Resident );
 
-        //Call this function to indicate you're going to start calling mapRegion. startMapRegion
-        //must be called from main thread.
         mStagingTexture->startMapRegion();
-        //Map region of the staging mVrTexture. This function can be called from any thread after
-        //startMapRegion has already been called.
         TextureBox texBox = mStagingTexture->mapRegion(
             mVrTexture->getWidth(),
             mVrTexture->getHeight(),
@@ -555,26 +541,23 @@ namespace Demo
                          mVrTexture->getWidth(),
                          mVrTexture->getHeight(),
                          bytesPerRow );
-        //stopMapRegion indicates you're done calling mapRegion. Call this from the main thread.
-        //It is your responsability to ensure you're done using all pointers returned from
-        //previous mapRegion calls, and that you won't call it again.
-        //You cannot upload until you've called this function.
-        //Do NOT call startMapRegion again until you're done with upload() calls.
         mStagingTexture->stopMapRegion();
-        //Upload an area of the staging texture into the texture. Must be done from main thread.
-        //The last bool parameter, 'skipSysRamCopy', is only relevant for AlwaysKeepSystemRamCopy
-        //textures, and we set it to true because we know it's already up to date. Otherwise
-        //it needs to be false.
         mStagingTexture->upload( texBox, mVrTexture, 0, 0, 0, false );
 
-        //This call is very important. It notifies the texture is fully ready for being displayed.
-        //Since we've scheduled the texture to become resident and pp until now, the texture knew
-        //it was being loaded and that only the metadata was certain. This call here signifies
-        //loading is done; and any registered listeners will be notified.
         mVrTexture->notifyDataIsReady();
-        
         return true;
     }
+    //-------------------------------------------------------------------------
+    bool OpenVRCompositorListener::frameStarted( const Ogre::FrameEvent& evt )
+    {
+
+        if( mWaitingMode == VrWaitingMode::BeforeSceneGraph )
+            updateHmdTrackingPose();
+
+        return true;
+    }
+
+
     //-------------------------------------------------------------------------
     bool OpenVRCompositorListener::frameRenderingQueued( const Ogre::FrameEvent &evt )
     {
@@ -656,8 +639,10 @@ namespace Demo
 
     void OpenVRCompositorListener::setImgPtr(const cv::Mat *left, const cv::Mat *right)
     {
+        mMtxImageResize.lock();
         resize(*left, mImageResize[LEFT], mImageResizeSize[LEFT]);
         resize(*right, mImageResize[RIGHT], mImageResizeSize[RIGHT]);
+        mMtxImageResize.unlock();
     }
 
     void OpenVRCompositorListener::setCameraConfig(
@@ -672,16 +657,16 @@ namespace Demo
         mCameraConfig[leftOrRightCam].f_y = f_y;
         mCameraConfig[leftOrRightCam].c_x = c_x;
         mCameraConfig[leftOrRightCam].c_y = c_y;
+        calcAlign();
     }
 
-    OpenVRCompositorListener::InputType
-        OpenVRCompositorListener::getInputType()
+    InputType OpenVRCompositorListener::getInputType()
     {
         return mInputType;
     }
 
     void OpenVRCompositorListener::setInputType(
-        OpenVRCompositorListener::InputType type)
+        InputType type)
     {
         mInputType = type;
         if (mInputType == VIDEO)
@@ -689,20 +674,25 @@ namespace Demo
             initVideoInput();
         }
         calcAlign();
+        std::cout << "after InputType set" << std::endl;
     }
 
     //-------------------------------------------------------------------------
     bool OpenVRCompositorListener::frameEnded( const Ogre::FrameEvent& evt )
     {
-        syncCameraProjection( false );
-        if( mWaitingMode == VrWaitingMode::AfterSwap )
-            updateHmdTrackingPose();
-        else
-            mVrCompositor3D->PostPresentHandoff();
-        if( mMustSyncAtEndOfFrame )
-            syncCamera();
-        if( mWaitingMode >= VrWaitingMode::AfterFrustumCulling )
-            syncCullCamera();
+        if(mHMD)
+        {
+            syncCameraProjection( false );
+            if( mWaitingMode == VrWaitingMode::AfterSwap )
+                updateHmdTrackingPose();
+            else
+                mVrCompositor3D->PostPresentHandoff();
+            if( mMustSyncAtEndOfFrame )
+                syncCamera();
+            if( mWaitingMode >= VrWaitingMode::AfterFrustumCulling )
+                syncCullCamera();
+            return true;
+        }
         return true;
     }
     //-------------------------------------------------------------------------

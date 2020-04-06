@@ -1,8 +1,7 @@
-
 #ifndef _Demo_OpenVRCompositorListener_H_
 #define _Demo_OpenVRCompositorListener_H_
 
-#include <experimental/filesystem>
+#include "SVR.h"
 
 #include "OgreFrameListener.h"
 #include "Compositor/OgreCompositorWorkspaceListener.h"
@@ -12,6 +11,9 @@
 #include "OgreCamera.h"
 
 #include "opencv2/opencv.hpp"
+
+#include <experimental/filesystem>
+#include <mutex>
 
 #if __cplusplus <= 199711L
     #ifndef nullptr
@@ -115,18 +117,9 @@ namespace Demo
 
     class OpenVRCompositorListener : public Ogre::FrameListener, public Ogre::CompositorWorkspaceListener
     {
-    public:
-        enum InputType {
-            CONST_MAT,
-            VIDEO,
-            IMG_SERIES,
-            IMG_TIMESTAMP
-        };
-
     protected:
         vr::IVRSystem		*mHMD;
         vr::IVRCompositor	*mVrCompositor3D;
-        vr::IVROverlay          *mVrCompositor2D;
 
         Ogre::TextureGpu	*mVrTexture;
         Ogre::Root          *mRoot;
@@ -183,6 +176,7 @@ namespace Demo
         size_t mImgWidthOrig;
         cv::Size mImageResizeSize[2];
         cv::Mat* mImageOrig[2];
+        std::mutex mMtxImageResize;
         cv::Mat mImageResize[2];
         Ogre::uint8 *mImageData;
         Ogre::StagingTexture *mStagingTexture;
@@ -201,7 +195,6 @@ namespace Demo
     public:
         OpenVRCompositorListener(
             vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor,
-            vr::IVROverlay *vrCompositor2D,
             Ogre::TextureGpu *vrTexture, Ogre::Root *root,
             Ogre::CompositorWorkspace *workspace,
             Ogre::Camera *camera, Ogre::Camera *cullCamera );
@@ -221,8 +214,6 @@ namespace Demo
         void setWaitingMode( VrWaitingMode::VrWaitingMode waitingMode );
         VrWaitingMode::VrWaitingMode getWaitingMode(void)   { return mWaitingMode; }
 
-        void toggleNextPict()
-        {mNextPict = !mNextPict;};
         InputType getInputType();
         void setInputType(InputType);
         void triggerWriteTexture()

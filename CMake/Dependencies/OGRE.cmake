@@ -60,6 +60,7 @@ macro( setupPluginFileFromTemplate BUILD_TYPE OGRE_USE_SCENE_FORMAT )
 
 	findPluginAndSetPath( ${BUILD_TYPE} OGRE_PLUGIN_RS_GL3PLUS	RenderSystem_GL3Plus )
 
+    set(PLUGIN_PATH "${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/${OGRE_PLUGIN_DIR}")
 	if( ${BUILD_TYPE} STREQUAL "Debug" )
 		configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Templates/Plugins.cfg.in ${CMAKE_CURRENT_BIN_DIR}/${BUILD_TYPE}/plugins_d.cfg )
 	else()
