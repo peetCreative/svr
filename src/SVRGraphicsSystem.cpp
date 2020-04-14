@@ -76,11 +76,12 @@ namespace Demo {
         mQuit( false ),
         mAlwaysAskForConfig( askForConfig ),
         mBackgroundColour( Ogre::ColourValue( 0.2f, 0.4f, 0.6f ) ),
-        mHMD( 0 ),
+        mHMD( nullptr ),
         mVrTexture( 0 ),
         mVrCullCamera( 0 ),
         mOvrCompositorListener( 0 )
     {
+
         if( isWriteAccessFolder( mPluginsFolder, "Ogre.log" ) )
             mWriteAccessFolder = mPluginsFolder;
         else
@@ -96,16 +97,15 @@ namespace Demo {
     {
         if( mRoot )
         {
-            Ogre::LogManager::getSingleton().logMessage(
-                        "WARNING: GraphicsSystem::deinitialize() not called!!!", Ogre::LML_CRITICAL );
+//             Ogre::LogManager::getSingleton().logMessage(
+//                         "WARNING: GraphicsSystem::deinitialize() not called!!!", Ogre::LML_CRITICAL );
         }
     }
 
         //-----------------------------------------------------------------------------------
-    void SVRGraphicsSystem::initialize(
-        InputType inputType, const Ogre::String &windowTitle )
+    void SVRGraphicsSystem::initialize(const Ogre::String &windowTitle )
     {
-        std::cout << "init graphics" << std::endl;
+        LOG << "Graphics initialize";
 #if OGRE_USE_SDL2
         //if( SDL_Init( SDL_INIT_EVERYTHING ) != 0 )
         if( SDL_Init( SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK |
@@ -153,8 +153,8 @@ namespace Demo {
 
         Ogre::ConfigOptionMap& cfgOpts = mRoot->getRenderSystem()->getConfigOptions();
 
-        int width   = 1280;
-        int height  = 720;
+        int width   = 2*1512;
+        int height  = 1680;
 
         Ogre::ConfigOptionMap::iterator opt = cfgOpts.find( "Video Mode" );
         if( opt != cfgOpts.end() )
@@ -261,7 +261,6 @@ namespace Demo {
         createCamera();
         mVrWorkspace = setupCompositor();
 
-        mOvrCompositorListener->setInputType(inputType);
     #if OGRE_USE_SDL2
         mInputHandler = new SdlInputHandler(
             mSdlWindow, mCurrentGameState,
@@ -559,7 +558,7 @@ namespace Demo {
         //At this point rootHlmsFolder should be a valid path to the Hlms data folder
 
         Ogre::HlmsUnlit *hlmsUnlit = 0;
-
+        Ogre::HlmsPbs *hlmsPbs = 0;
         //For retrieval of the paths to the different folders needed
         Ogre::String mainFolderPath;
         Ogre::StringVector libraryFoldersPaths;
@@ -592,7 +591,29 @@ namespace Demo {
             hlmsUnlit = OGRE_NEW Ogre::HlmsUnlit( archiveUnlit, &archiveUnlitLibraryFolders );
             Ogre::Root::getSingleton().getHlmsManager()->registerHlms( hlmsUnlit );
         }
+        {
+            //Create & Register HlmsPbs
+            //Do the same for HlmsPbs:
+            Ogre::HlmsPbs::getDefaultPaths( mainFolderPath, libraryFoldersPaths );
+            Ogre::Archive *archivePbs = archiveManager.load( rootHlmsFolder + mainFolderPath,
+                                                             "FileSystem", true );
 
+            //Get the library archive(s)
+            Ogre::ArchiveVec archivePbsLibraryFolders;
+            libraryFolderPathIt = libraryFoldersPaths.begin();
+            libraryFolderPathEn = libraryFoldersPaths.end();
+            while( libraryFolderPathIt != libraryFolderPathEn )
+            {
+                Ogre::Archive *archiveLibrary =
+                        archiveManager.load( rootHlmsFolder + *libraryFolderPathIt, "FileSystem", true );
+                archivePbsLibraryFolders.push_back( archiveLibrary );
+                ++libraryFolderPathIt;
+            }
+
+            //Create and register
+            hlmsPbs = OGRE_NEW Ogre::HlmsPbs( archivePbs, &archivePbsLibraryFolders );
+            Ogre::Root::getSingleton().getHlmsManager()->registerHlms( hlmsPbs );
+        }
     }
 
     //-----------------------------------------------------------------------------------
@@ -612,12 +633,14 @@ namespace Demo {
         const size_t numThreads = 1;
 #else
         //getNumLogicalCores() may return 0 if couldn't detect
-        const size_t numThreads = std::max<size_t>( 1, Ogre::PlatformInformation::getNumLogicalCores() );
+        const size_t numThreads = std::max<size_t>(
+            1, Ogre::PlatformInformation::getNumLogicalCores() );
 #endif
         // Create the SceneManager, in this case a generic one
-        mSceneManager = mRoot->createSceneManager( Ogre::ST_GENERIC,
-                                                   numThreads,
-                                                   "ExampleSMInstance" );
+        mSceneManager = mRoot->createSceneManager(
+            Ogre::ST_GENERIC,
+            numThreads,
+            "ExampleSMInstance" );
 
         mSceneManager->addRenderQueueListener( mOverlaySystem );
         mSceneManager->getRenderQueue()->setSortRenderQueue(
@@ -636,7 +659,7 @@ namespace Demo {
         // Position it at 500 in Z direction
         mCamera->setPosition( Ogre::Vector3( 0, 5, 15 ) );
         // Look back along -Z
-        mCamera->lookAt( Ogre::Vector3( 0, 0, 0 ) );
+        mCamera->lookAt( Ogre::Vector3( 0, -1, 0 ) );
         mCamera->setNearClipDistance( 0.2f );
         mCamera->setFarClipDistance( 1000.0f );
         mCamera->setAutoAspectRatio( true );
@@ -652,7 +675,8 @@ namespace Demo {
         mVrCullCamera = mSceneManager->createCamera( "VrCullCamera" );
         Ogre::CompositorWorkspace* vrCompositor = nullptr;
         vr::IVRCompositor *vrCompositor3D = nullptr;
-        std::cout << "setupCompositor" << std::endl;
+//         Ogre::LogManager::getSingleton().logMessage(
+//             "setupCompositor");
         Ogre::CompositorManager2 *compositorManager =
             mRoot->getCompositorManager2();
         initOpenVR();
@@ -665,11 +689,14 @@ namespace Demo {
             "SVRMirrorWindowWorkspace", true );
         vrCompositor3D =
             vr::VRCompositor();
+       int frames = compositorManager->getRenderSystem()->getVaoManager()->getDynamicBufferMultiplier();
         mOvrCompositorListener =
             new Demo::OpenVRCompositorListener(
                 mHMD, vrCompositor3D, mVrTexture,
                 mRoot, mVrWorkspace,
-                mCamera, mVrCullCamera );
+                mCamera, mVrCullCamera,
+                frames );
+
         return vrCompositor;
     }
 
@@ -683,8 +710,10 @@ namespace Demo {
         vr::TrackedPropertyError *peError)
     {
         vr::IVRSystem *vrSystem = vr::VRSystem();
-        uint32_t unRequiredBufferLen = vrSystem->GetStringTrackedDeviceProperty( unDevice, prop,
-                                                                                 NULL, 0, peError );
+        uint32_t unRequiredBufferLen =
+            vrSystem->GetStringTrackedDeviceProperty(
+                unDevice, prop,
+                NULL, 0, peError );
         if( unRequiredBufferLen == 0 )
             return "";
 
@@ -700,39 +729,50 @@ namespace Demo {
     void SVRGraphicsSystem::initOpenVR(void)
     {
         // Loading the SteamVR Runtime
-        std::cout << "initOpenVR" << std::endl;
-        vr::EVRInitError eError = vr::VRInitError_None;
-        mHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
-
-        if( eError != vr::VRInitError_None )
+//         Ogre::LogManager::getSingleton().logMessage(
+//             "initOpenVR" );
+        if(vr::VR_IsHmdPresent())
         {
-            std::cout << "initOpenVR found error" << std::endl;
-            mHMD = nullptr;
-//             Ogre::String errorMsg = "Unable to init VR runtime: ";
-//             errorMsg += vr::VR_GetVRInitErrorAsEnglishDescription( eError );
-//             OGRE_EXCEPT(
-//                 Ogre::Exception::ERR_RENDERINGAPI_ERROR, errorMsg,
-//                 "SVRGraphicsSystem::initOpenVR" );
+            vr::EVRInitError eError = vr::VRInitError_None;
+            mHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
+            if( eError != vr::VRInitError_None )
+            {
+                mHMD = nullptr;
+                LOG << "OpenVR not even if HMD seems to be present. Have you started SteamVR?";
+//                 Ogre::String errorMsg = "Unable to init VR runtime: ";
+//                 errorMsg += vr::VR_GetVRInitErrorAsEnglishDescription( eError );
+//                 OGRE_EXCEPT(
+//                     Ogre::Exception::ERR_RENDERINGAPI_ERROR, errorMsg,
+//                     "SVRGraphicsSystem::initOpenVR" );
+            }
         }
 
-        mStrDriver = "No Driver";
-        mStrDisplay = "No Display";
-
-        mStrDriver = GetTrackedDeviceString(
-            vr::k_unTrackedDeviceIndex_Hmd,
-            vr::Prop_TrackingSystemName_String );
-        mStrDisplay = GetTrackedDeviceString(
-            vr::k_unTrackedDeviceIndex_Hmd,
-            vr::Prop_SerialNumber_String );
-        mDeviceModelNumber = GetTrackedDeviceString(
-            vr::k_unTrackedDeviceIndex_Hmd,
-            vr::Prop_ModelNumber_String );
-
-        initCompositorVR();
-
         uint32_t width, height, new_width;
-        //gives us the render target off one eye
-        mHMD->GetRecommendedRenderTargetSize( &width, &height );
+        if ( mHMD )
+        {
+            mStrDriver = "No Driver";
+            mStrDisplay = "No Display";
+
+            mStrDriver = GetTrackedDeviceString(
+                vr::k_unTrackedDeviceIndex_Hmd,
+                vr::Prop_TrackingSystemName_String );
+            mStrDisplay = GetTrackedDeviceString(
+                vr::k_unTrackedDeviceIndex_Hmd,
+                vr::Prop_SerialNumber_String );
+            mDeviceModelNumber = GetTrackedDeviceString(
+                vr::k_unTrackedDeviceIndex_Hmd,
+                vr::Prop_ModelNumber_String );
+
+            initCompositorVR();
+
+            //gives us the render target off one eye
+            mHMD->GetRecommendedRenderTargetSize( &width, &height );
+        }
+        else
+        {
+            width = mRenderWindow->getWidth();
+            height = mRenderWindow->getHeight();
+        }
 
         Ogre::TextureGpuManager *textureManager = mRoot->getRenderSystem()->getTextureGpuManager();
         //Radial Density Mask requires the VR texture to be UAV & reinterpretable
@@ -749,13 +789,11 @@ namespace Demo {
         mVrTexture->scheduleTransitionTo(
             Ogre::GpuResidency::Resident );
 
-        std::cout << "compositor" << std::endl;
         Ogre::CompositorManager2 *compositorManager =
             mRoot->getCompositorManager2();
         mVrWorkspace = compositorManager->addWorkspace(
             mSceneManager, mVrTexture,
             mCamera, "SVRWorkspace", true, 0 );
-        std::cout << "compositor after" << std::endl;
 
         createHiddenAreaMeshVR();
     }
@@ -781,14 +819,14 @@ namespace Demo {
             setting = Ogre::HiddenAreaMeshVrGenerator::loadSettings( mDeviceModelNumber, cfgFile );
             if( setting.tessellation > 0u )
                 Ogre::HiddenAreaMeshVrGenerator::generate( "HiddenAreaMeshVr.mesh", setting );
-            Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
-            logManager.logMessage( "HiddenAreaMeshVR optimization IS AVAILABLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" );
+            //Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
+//             logManager.logMessage( "HiddenAreaMeshVR optimization is available!" );
         }
         catch( Ogre::FileNotFoundException &e )
         {
-            Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
-            logManager.logMessage( e.getDescription() );
-            logManager.logMessage( "HiddenAreaMeshVR optimization won't be available" );
+//             Ogre::LogManager &logManager = Ogre::LogManager::getSingleton();
+//             logManager.logMessage( e.getDescription() );
+//             logManager.logMessage( "HiddenAreaMeshVR optimization won't be available" );
         }
     }
 

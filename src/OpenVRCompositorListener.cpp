@@ -7,9 +7,6 @@
 #include "OgreMemoryAllocatorConfig.h"
 #include "OgreGpuResource.h"
 #include "OgreStagingTexture.h"
-#include "OgreLogManager.h"
-
-#include "opencv2/opencv.hpp"
 
 #include "OgreTextureGpu.h"
 #include "OgreRenderSystem.h"
@@ -19,9 +16,9 @@
 
 #include "Compositor/OgreCompositorWorkspace.h"
 
+#include "opencv2/opencv.hpp"
 #include <sstream>
 #include <cmath>
-#include <experimental/filesystem>
 #include <mutex>
 
 using namespace Ogre;
@@ -34,7 +31,8 @@ namespace Demo
             vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor3D,
             Ogre::TextureGpu *vrTexture, Ogre::Root *root,
             Ogre::CompositorWorkspace *workspace,
-            Ogre::Camera *camera, Ogre::Camera *cullCamera ) :
+            Ogre::Camera *camera, Ogre::Camera *cullCamera,
+            int refreshFrameNum ) :
         mHMD( hmd ),
         mVrCompositor3D( vrCompositor3D ),
         mVrTexture( vrTexture ),
@@ -51,13 +49,12 @@ namespace Demo
         mLastCamNear( 0 ),
         mLastCamFar( 0 ),
         mMustSyncAtEndOfFrame( false ),
-        mImgScale(0.3),
-        mImgRatio(640/512.0),
         mImageResizeSize{Size(0,0), Size(0,0)},
-        mImageOrig{nullptr, nullptr},
-        mImageCnt(0)
+        mFrameCnt(0),
+        mRefreshFrameNum(refreshFrameNum),
+        mWriteTexture(true),
+        mShowMovie(true)
     {
-        memset( mTrackedDevicePose, 0, sizeof( mTrackedDevicePose ) );
         memset( mDevicePose, 0, sizeof( mDevicePose ) );
         memset( &mVrData, 0, sizeof( mVrData ) );
         mAlign.leftLeft = 0;
@@ -80,67 +77,36 @@ namespace Demo
         mCameraConfig[RIGHT].c_x = 349.11;
         mCameraConfig[RIGHT].c_y = 250.825;
 
-        mInputType = CONST_MAT;
-        if(mInputType == VIDEO)
-            initVideoInput();
-        else if (mInputType == IMG_TIMESTAMP)
-            initImgsTimestamp();
-
-
         if(mHMD)
         {
             mCamera->setVrData( &mVrData );
             syncCameraProjection( true );
-    //         calcAlign();
-
-            std::cout << "camera left to right " << mVrData.mLeftToRight.x <<
+            LOG << "camera left to right " << mVrData.mLeftToRight.x <<
                 " "  << mVrData.mLeftToRight.y  << std::endl;
             float left, right, top, bottom;
             mHMD->GetProjectionRaw(vr::Eye_Left, &left, &right, &top, &bottom);
-            std::cout << "left camera tan left and right " << left << " " << right << std::endl;
-            std::cout << "left camera tan top and bottom " << top << " " << bottom << std::endl;
+            LOG << "left camera tan left and right " << left << " " << right << std::endl;
+            LOG << "left camera tan top and bottom " << top << " " << bottom << std::endl;
             mHMD->GetProjectionRaw(vr::Eye_Right, &left, &right, &top, &bottom);
-            std::cout << "right camera tan left and right " << left << " " << right << std::endl;
-            std::cout << "right camera tan top and bottom " << top << " " << bottom << std::endl;
-            mRoot->addFrameListener( this );
-            mWorkspace->setListener( this );
+            LOG << "right camera tan left and right " << left << " " << right << std::endl;
+            LOG << "right camera tan top and bottom " << top << " " << bottom << std::endl;
         }
+        else
+        {
+            syncCameraProjectionNoHMD( true );
+        }
+        calcAlign();
+
+        mRoot->addFrameListener( this );
+        mWorkspace->setListener( this );
 
         const Ogre::String &renderSystemName = mRenderSystem->getName();
         if( renderSystemName == "OpenGL 3+ Rendering Subsystem" )
             mApiTextureType = vr::TextureType_OpenGL;
-        mWriteTexture = true;
 
-
-        TextureGpuManager *textureManager =
-            mRoot->getRenderSystem()->getTextureGpuManager();
-        const uint32 rowAlignment = 4u;
-        const size_t dataSize =
-            PixelFormatGpuUtils::getSizeBytes(
-                mVrTexture->getWidth(),
-                mVrTexture->getHeight(),
-                mVrTexture->getDepth(),
-                mVrTexture->getNumSlices(),
-                mVrTexture->getPixelFormat(),
-                rowAlignment );
-        const size_t bytesPerRow =
-            mVrTexture->_getSysRamCopyBytesPerRow( 0 );
-
-        mImageData = reinterpret_cast<uint8*>(
-            OGRE_MALLOC_SIMD( dataSize,
-            MEMCATEGORY_RESOURCE ) );
-        memset(mImageData, 25, dataSize);
-
-        //We have to upload the data via a StagingTexture, which acts as an intermediate stash
-        //memory that is both visible to CPU and GPU.
-        mStagingTexture = 
-            textureManager->getStagingTexture(
-                mVrTexture->getWidth(),
-                mVrTexture->getHeight(),
-                mVrTexture->getDepth(),
-                mVrTexture->getNumSlices(),
-                mVrTexture->getPixelFormat() );
+        setupImageData();
     }
+
     //-------------------------------------------------------------------------
     OpenVRCompositorListener::~OpenVRCompositorListener()
     {
@@ -160,25 +126,35 @@ namespace Demo
         mRoot->removeFrameListener( this );
     }
 
-    bool OpenVRCompositorListener::initVideoInput() {
-            mCapture.set(CV_CAP_PROP_MODE,  CV_CAP_MODE_RGB );
-            mCapture = VideoCapture("/home/peetcreative/SurgicalData/ForPeter/Video.avi");
-            if (!mCapture.isOpened()) {
-                std::cout << "Video could not be opened" << std::endl;
-                return false;
-            }
-            // Default resolution of the frame is obtained.The default resolution is system dependent.
-            mCaptureFrameWidth =
-                mCapture.get(CV_CAP_PROP_FRAME_WIDTH);
-            mCaptureFrameHeight =
-                mCapture.get(CV_CAP_PROP_FRAME_HEIGHT);
-            mCaptureFramePixelFormat =
-                mCapture.get(CV_CAP_PROP_FORMAT);
-            return true;
-    }
+    void OpenVRCompositorListener::setupImageData()
+    {
+        TextureGpuManager *textureManager =
+            mRoot->getRenderSystem()->getTextureGpuManager();
+        const uint32 rowAlignment = 4u;
+        const size_t dataSize =
+            PixelFormatGpuUtils::getSizeBytes(
+                mVrTexture->getWidth(),
+                mVrTexture->getHeight(),
+                mVrTexture->getDepth(),
+                mVrTexture->getNumSlices(),
+                mVrTexture->getPixelFormat(),
+                rowAlignment );
 
-    void OpenVRCompositorListener::initImgsTimestamp() {
-        mFileIteratorLeft = fs::directory_iterator("/tmp/new_images");
+        mImageData = reinterpret_cast<uint8*>(
+            OGRE_MALLOC_SIMD( dataSize,
+            MEMCATEGORY_RESOURCE ) );
+        memset(mImageData, 0, dataSize);
+
+        //We have to upload the data via a StagingTexture, which acts as an intermediate stash
+        //memory that is both visible to CPU and GPU.
+        mStagingTexture = 
+            textureManager->getStagingTexture(
+                mVrTexture->getWidth(),
+                mVrTexture->getHeight(),
+                mVrTexture->getDepth(),
+                mVrTexture->getNumSlices(),
+                mVrTexture->getPixelFormat() );
+
     }
     //-------------------------------------------------------------------------
     Ogre::Matrix4 OpenVRCompositorListener::convertSteamVRMatrixToMatrix4( vr::HmdMatrix34_t matPose )
@@ -200,51 +176,31 @@ namespace Demo
                     matPose.m[3][0], matPose.m[3][1], matPose.m[3][2], matPose.m[3][3] );
         return matrixObj;
     }
+
     //-------------------------------------------------------------------------
-    void OpenVRCompositorListener::updateHmdTrackingPose(void)
+    void OpenVRCompositorListener::syncCameraProjectionNoHMD( bool bForceUpdate )
     {
-        mVrCompositor3D->WaitGetPoses( mTrackedDevicePose, vr::k_unMaxTrackedDeviceCount, NULL, 0 );
-/*
-        mValidPoseCount = 0;
-        for( size_t nDevice = 0; nDevice < vr::k_unMaxTrackedDeviceCount; ++nDevice )
+        const Ogre::Real camNear = mCamera->getNearClipDistance();
+        const Ogre::Real camFar = mCamera->getFarClipDistance();
+
+        if( mLastCamNear != camNear || mLastCamFar != camFar || bForceUpdate )
         {
-            if ( mTrackedDevicePose[nDevice].bPoseIsValid )
-            {
-                ++mValidPoseCount;
-                mDevicePose[nDevice] = convertSteamVRMatrixToMatrix4(
-                                           mTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking );
-            }
+            Ogre::Matrix4 eyeToHead[2] = { Ogre::Matrix4::IDENTITY, Ogre::Matrix4::IDENTITY };
+            Ogre::Matrix4 projectionMatrixRS[2] = { mCamera->getProjectionMatrixWithRSDepth(),
+                                                    mCamera->getProjectionMatrixWithRSDepth() };
+
+            mVrData.set( eyeToHead, projectionMatrixRS );
+            mLastCamNear = camNear;
+            mLastCamFar = camFar;
+
+            mCullCameraOffset = Ogre::Vector3::ZERO;
+
+            mVrCullCamera->setNearClipDistance( camNear );
+            mVrCullCamera->setFarClipDistance( camFar );
+            mVrCullCamera->setFOVy( mCamera->getFOVy() );
         }
-
-        if( mTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
-        {
-            const bool canSync = canSyncCameraTransformImmediately();
-            if( canSync )
-                syncCamera();
-            else
-                mMustSyncAtEndOfFrame = true;
-        }*/
     }
-    //-------------------------------------------------------------------------
-    void OpenVRCompositorListener::syncCullCamera(void)
-    {
-        const Ogre::Quaternion derivedRot = mCamera->getDerivedOrientation();
-        Ogre::Vector3 camPos = mCamera->getDerivedPosition();
-        mVrCullCamera->setOrientation( derivedRot );
-        mVrCullCamera->setPosition( camPos + derivedRot * mCullCameraOffset );
-    }
-    //-------------------------------------------------------------------------
-    void OpenVRCompositorListener::syncCamera(void)
-    {
-        OGRE_ASSERT_MEDIUM( mTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid );
-        mCamera->setPosition( mDevicePose[vr::k_unTrackedDeviceIndex_Hmd].getTrans() );
-        mCamera->setOrientation( mDevicePose[vr::k_unTrackedDeviceIndex_Hmd].extractQuaternion() );
 
-        if( mWaitingMode < VrWaitingMode::AfterFrustumCulling )
-            syncCullCamera();
-
-        mMustSyncAtEndOfFrame = false;
-    }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::syncCameraProjection( bool bForceUpdate )
     {
@@ -297,26 +253,8 @@ namespace Demo
 
     bool OpenVRCompositorListener::calcAlign()
     {
-        if(mImgScale <= 0)
-        {
-            return false;
-        }
-
-        if (mInputType == VIDEO)
-        {
-            mImgRatio =  float(mCaptureFrameWidth)/mCaptureFrameHeight;
-        }
-        else if( mInputType == IMG_SERIES )
-        {
-            mImgRatio =  640/512.0;
-        }
-
-
         //now we have to know
         size_t vr_width_half = mVrTexture->getWidth()/2;
-
-//         float img_height_resize_left = mVrTexture->getHeight() * mImgScale;
-//         float img_width_resize_right = img_height_resize * mImgRatio;
 
         //left_left, left_right
         //right_left right_right
@@ -347,16 +285,31 @@ namespace Demo
             mCameraConfig[LEFT].c_y,
             mCameraConfig[RIGHT].c_y};
 
-        mHMD->GetProjectionRaw(
-            vr::Eye_Left, &tan[0][0], &tan[0][1], &tan[2][0], &tan[2][1]);
-        mHMD->GetProjectionRaw(
-            vr::Eye_Right, &tan[1][0], &tan[1][1], &tan[3][0], &tan[3][1]);
-
-        std::cout << "ratio left: " << vr_width_half << " " << mVrTexture->getHeight() << std::endl;
-        std::cout << "ratio left: " << -tan[0][0] + tan[0][1] << " " <<
-            -tan[2][0] + tan[2][1] << std::endl;
-        std::cout << "ratio right: " << -tan[0][0] + tan[0][1] << " " <<
-            -tan[2][0] + tan[2][1] << std::endl;
+        if (mHMD)
+        {
+            mHMD->GetProjectionRaw(
+                vr::Eye_Left, &tan[0][0], &tan[0][1], &tan[2][0], &tan[2][1]);
+            mHMD->GetProjectionRaw(
+                vr::Eye_Right, &tan[1][0], &tan[1][1], &tan[3][0], &tan[3][1]);
+        }
+        else
+        {
+                tan[0][0] = -1.39377;
+                tan[0][1] = 1.23437;
+                tan[1][0] = -1.24354 ;
+                tan[1][1] = 1.39482;
+                tan[2][0] = -1.46653 ;
+                tan[2][1] = 1.45802 ;
+                tan[3][0] = -1.47209;
+                tan[3][1] = 1.45965;
+        }
+/*
+        LOG << "ratio left: " << vr_width_half << " " << mVrTexture->getHeight() << std::endl;
+        LOG << "tan: "
+            << tan[0][0] << " " << tan[0][1] << " "
+            << tan[1][0] << " " << tan[1][1] << " "
+            << tan[2][0] << " " << tan[2][1] << " "
+            << tan[3][0] << " " << tan[3][1] << std::endl;*/
 
         for (int i = 0; i < 4; i++)
         {
@@ -379,31 +332,11 @@ namespace Demo
 
         mImageResize[LEFT] = Mat();
         mImageResize[RIGHT] = Mat();
-        if (mInputType == CONST_MAT)
-        {
-            mImageOrig[LEFT] = nullptr;
-            mImageOrig[RIGHT] = nullptr;
-        }
-        else if ( mInputType == VIDEO)
-        {
-            Size origSize(1920, 540);
-            mImageOrig[LEFT] = new Mat(origSize, CV_8UC3);
-            mImageOrig[RIGHT] = new Mat(origSize, CV_8UC3);
-        }
-        else
-        {
-            Size origSizeLeft(
-                mCameraConfig[LEFT].width, mCameraConfig[LEFT].height);
-            Size origSizeRight(
-                mCameraConfig[RIGHT].width, mCameraConfig[RIGHT].height);
-            mImageOrig[LEFT] = new Mat(origSizeLeft, CV_8UC3);
-            mImageOrig[RIGHT] = new Mat(origSizeRight, CV_8UC3);
-        }
 
-        std::cout <<"left resize:" << mImageResizeSize[LEFT].width 
-            << " " << mImageResizeSize[LEFT].height << std::endl;
-        std::cout <<"right resize:" << mImageResizeSize[RIGHT].width 
-            << " " << mImageResizeSize[RIGHT].height << std::endl;
+        LOG << "left resize: " << mImageResizeSize[LEFT].width
+            << " " << mImageResizeSize[LEFT].height;
+        LOG << "right resize: " << mImageResizeSize[RIGHT].width 
+            << " " << mImageResizeSize[RIGHT].height;
         mAlign.leftLeft = align[0];
         mAlign.rightLeft = vr_width_half + align[1];
         mAlign.leftTop = align[2];
@@ -411,10 +344,10 @@ namespace Demo
 
         return true;
 
-//         std::cout << "Align leftLeft:" << mAlign.leftLeft << std::endl;
-//         std::cout << "Align leftTop:" << mAlign.leftTop << std::endl;
-//         std::cout << "Align rightLeft:" << mAlign.rightLeft << std::endl;
-//         std::cout << "Align rightTop:" << mAlign.rightTop << std::endl;
+//         LOG << "Align leftLeft:" << mAlign.leftLeft << std::endl;
+//         LOG << "Align leftTop:" << mAlign.leftTop << std::endl;
+//         LOG << "Align rightLeft:" << mAlign.rightLeft << std::endl;
+//         LOG << "Align rightTop:" << mAlign.rightTop << std::endl;
     }
     bool OpenVRCompositorListener::fillTexture(void)
     {
@@ -422,80 +355,16 @@ namespace Demo
         const size_t bytesPerRow =
             mVrTexture->_getSysRamCopyBytesPerRow( 0 );
 
-        if(mInputType != CONST_MAT) {
-            if(mInputType == VIDEO)
-            {
-                cv::Mat mMat;
+//         LOG << mVrTexture->getWidth() << std::endl;
+//         LOG << mVrTexture->getHeight() << std::endl;
+//         LOG << width_resize << std::endl;
+//         LOG << "height_resize1 " << height_resize << std::endl;
+//         LOG << height_resize << std::endl;
 
-                // Capture frame-by-frame
-                mCapture >> mMat; //1920/1080
-                //std::cout <<"type:" << std::endl;
-                //std::cout <<"type:" << mCapture.get(CV_CAP_PROP_FORMAT ) << std::endl;
-                //<< " width:" << mCapture.get(CV_CAP_PROP_FRAME_WIDTH)
-                //<< " height:" << mCapture.get(CV_CAP_PROP_FRAME_HEIGHT)
-                //<< std::endl;
-                //1920x540
-                if(mMat.empty())
-                {
-                    return false;
-                }
-                cv::Rect lrect(0,540, 1920, 540);
-                cv::Rect rrect(0,0, 1920, 540);
-                *mImageOrig[LEFT] = mMat(lrect);
-                *mImageOrig[RIGHT] = mMat(rrect);
-            }
-            if (mInputType == IMG_SERIES)
-            {
-                if (mImageCnt >= 1000)
-                    mImageCnt = 0;
-                std::stringstream ssl;
-                ssl << "/tmp/rect/left_undist_rect01"
-                    << std::setfill('0') << std::setw(3) << mImageCnt
-                    << ".png";
-                std::stringstream ssr;
-                ssr << "/tmp/rect/right_undist_rect01"
-                    << std::setfill('0') << std::setw(3) << mImageCnt
-                    << ".png";
-        //         std::cout << "fill texture with "<< ssl.str() << std::endl;
-        //         std::cout << "fill texture with "<< ssr.str() << std::endl;
-    //             mImageCnt++;
-                *mImageOrig[LEFT] = imread(ssl.str());
-                *mImageOrig[RIGHT] = imread(ssr.str());
-            }
-            if (mInputType == IMG_TIMESTAMP)
-            {
-                fs::directory_entry entry_left = *mFileIteratorLeft++;
-                std::string path_str_left = entry_left.path().string();
-                size_t pos_left = path_str_left.rfind("left");
-                std::string path_str_right = path_str_left.substr(0, pos_left) +
-                    "right" +
-                    path_str_left.substr(pos_left + 4, path_str_left.length());
-                fs::path path_right(path_str_right);
-                if(!exists(path_right))
-                    return false;
-                *mImageOrig[LEFT] = imread(path_str_right);
-                *mImageOrig[RIGHT] = imread(path_str_left);
-            }
-
-            if(mImageOrig[LEFT]->empty() || mImageOrig[RIGHT]->empty())
-            {
-                return false;
-            }
-
-            resize(*mImageOrig[LEFT], mImageResize[LEFT], mImageResizeSize[LEFT]);
-            resize(*mImageOrig[RIGHT], mImageResize[RIGHT], mImageResizeSize[RIGHT]);
-        }
-
-//         std::cout << mVrTexture->getWidth() << std::endl;
-//         std::cout << mVrTexture->getHeight() << std::endl;
-//         std::cout << width_resize << std::endl;
-//         std::cout << "height_resize1 " << height_resize << std::endl;
-//         std::cout << height_resize << std::endl;
-
-//         std::cout << "width_resize " << width_resize << std::endl;
-//         std::cout << "height_resize " << height_resize << std::endl;
-//         std::cout << "ldst.cols " << ldst.cols << std::endl;
-//         std::cout << "ldst.rows " << ldst.rows << std::endl;
+//         LOG << "width_resize " << width_resize << std::endl;
+//         LOG << "height_resize " << height_resize << std::endl;
+//         LOG << "ldst.cols " << ldst.cols << std::endl;
+//         LOG << "ldst.rows " << ldst.rows << std::endl;
 
         if ( !mImageResize[LEFT].empty() && !mImageResize[RIGHT].empty()) {
             size_t align_left;
@@ -547,12 +416,62 @@ namespace Demo
         mVrTexture->notifyDataIsReady();
         return true;
     }
+
+    //-------------------------------------------------------------------------
+    bool OpenVRCompositorListener::clearTexture(void)
+    {
+        const size_t bytesPerRow =
+            mVrTexture->_getSysRamCopyBytesPerRow( 0 );
+
+        const uint32 rowAlignment = 4u;
+        const size_t dataSize =
+            PixelFormatGpuUtils::getSizeBytes(
+                mVrTexture->getWidth(),
+                mVrTexture->getHeight(),
+                mVrTexture->getDepth(),
+                mVrTexture->getNumSlices(),
+                mVrTexture->getPixelFormat(),
+                rowAlignment );
+        memset(mImageData, 0, dataSize);
+        mStagingTexture->startMapRegion();
+        TextureBox texBox = mStagingTexture->mapRegion(
+            mVrTexture->getWidth(),
+            mVrTexture->getHeight(),
+            mVrTexture->getDepth(),
+            mVrTexture->getNumSlices(),
+            mVrTexture->getPixelFormat() );
+        texBox.copyFrom( mImageData,
+                         mVrTexture->getWidth(),
+                         mVrTexture->getHeight(),
+                         bytesPerRow );
+        mStagingTexture->stopMapRegion();
+        mStagingTexture->upload( texBox, mVrTexture, 0, 0, 0, false );
+
+        mVrTexture->notifyDataIsReady();
+        return true;
+    }
     //-------------------------------------------------------------------------
     bool OpenVRCompositorListener::frameStarted( const Ogre::FrameEvent& evt )
     {
+        if ( mHMD )
+            mVrCompositor3D->WaitGetPoses( mTrackedDevicePose, vr::k_unMaxTrackedDeviceCount, NULL, 0 );
 
-        if( mWaitingMode == VrWaitingMode::BeforeSceneGraph )
-            updateHmdTrackingPose();
+        if( mShowMovie )
+        {
+            if (mFrameCnt-- == 0 )
+            {
+                fillTexture();
+                mFrameCnt = mRefreshFrameNum;
+            }
+        }
+        else
+        {
+            if (mFrameCnt != 0 )
+            {
+                clearTexture();
+                mFrameCnt = 0;
+            }
+        }
 
         return true;
     }
@@ -660,74 +579,30 @@ namespace Demo
         calcAlign();
     }
 
-    InputType OpenVRCompositorListener::getInputType()
-    {
-        return mInputType;
-    }
-
-    void OpenVRCompositorListener::setInputType(
-        InputType type)
-    {
-        mInputType = type;
-        if (mInputType == VIDEO)
-        {
-            initVideoInput();
-        }
-        calcAlign();
-        std::cout << "after InputType set" << std::endl;
-    }
-
     //-------------------------------------------------------------------------
     bool OpenVRCompositorListener::frameEnded( const Ogre::FrameEvent& evt )
     {
         if(mHMD)
         {
-            syncCameraProjection( false );
-            if( mWaitingMode == VrWaitingMode::AfterSwap )
-                updateHmdTrackingPose();
-            else
-                mVrCompositor3D->PostPresentHandoff();
-            if( mMustSyncAtEndOfFrame )
-                syncCamera();
-            if( mWaitingMode >= VrWaitingMode::AfterFrustumCulling )
-                syncCullCamera();
-            return true;
+            mVrCompositor3D->PostPresentHandoff();
         }
         return true;
     }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::workspacePreUpdate( Ogre::CompositorWorkspace *workspace )
     {
-        if( mWaitingMode == VrWaitingMode::AfterSceneGraph )
-            updateHmdTrackingPose();
     }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::passPreExecute( Ogre::CompositorPass *pass )
     {
-        if( mWaitingMode == VrWaitingMode::BeforeShadowmaps &&
-            pass->getDefinition()->getType() == Ogre::PASS_SCENE &&
-            pass->getDefinition()->mIdentifier == 0x01234567 )
-        {
-            updateHmdTrackingPose();
-        }
     }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::passSceneAfterShadowMaps( Ogre::CompositorPassScene *pass )
     {
-        if( mWaitingMode == VrWaitingMode::BeforeFrustumCulling &&
-            pass->getDefinition()->mIdentifier == 0x01234567 )
-        {
-            updateHmdTrackingPose();
-        }
     }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::passSceneAfterFrustumCulling( Ogre::CompositorPassScene *pass )
     {
-        if( mWaitingMode == VrWaitingMode::AfterFrustumCulling &&
-            pass->getDefinition()->mIdentifier == 0x01234567 )
-        {
-            updateHmdTrackingPose();
-        }
     }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::setWaitingMode( VrWaitingMode::VrWaitingMode waitingMode )
@@ -738,11 +613,5 @@ namespace Demo
     void OpenVRCompositorListener::setGlitchFree( VrWaitingMode::VrWaitingMode firstGlitchFreeMode )
     {
         mFirstGlitchFreeMode = firstGlitchFreeMode;
-    }
-    //-------------------------------------------------------------------------
-    bool OpenVRCompositorListener::canSyncCameraTransformImmediately(void) const
-    {
-        return mWaitingMode <= VrWaitingMode::BeforeSceneGraph ||
-               mWaitingMode <= mFirstGlitchFreeMode;
     }
 }

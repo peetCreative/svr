@@ -35,81 +35,13 @@ namespace Demo
 {
     namespace VrWaitingMode
     {
-        /** OpenVR's WaitGetPoses blocks until 3ms before VSync/start of the frame. Valve
-            calls this 'running start'.
-
-            Theoretically this reduces GPU bubbles, and helps a lot with meeting VSync one time.
-
-            However... it's extremely difficult to get right.
-
-            So: WaitGetPoses will block until 3ms before VSync. And once it returns,
-            *we have 3ms to submit our graphics commands to the GPU*
-            If the CPU takes longer than 3ms, VSync will be missed and performance is going
-            to go down really bad, even if the system is perfectly capable of sustaining 90hz.
-
-            Thus we want to call WaitGetPoses as late as possible, but not late enough that after
-            it returns we have 3ms with nothing to do.
-
-            You can think of the situation like a glass of water with 3ms capacity. You don't
-            want the glass to be empty all the time because that's a wait of a precious container
-            (of precious CPU cycles), but you absolutely don't want the glass to overflow and spill
-            water.
-
-            Therefore WHEN we call WaitGetPoses depends on how long the work we have left to
-            do will take. And that depends on:
-                1. How fast the CPU is
-                2. How expensive the scene is
-
-            Therefore there is no one true location on when to call this function.
-            And that's why we can dynamically shift where it is called.
-
-            This enum is ordered. i.e. VrWaitingMode::AfterSwap calls WaitGetPoses as early
-            as possible, while VrWaitingMode::AfterFrustumCulling calls it as late as possible.
-
-            More info about running start in GDC 2015 Advanced VR Rendering with Valve's Alex Vlachos
-            https://youtu.be/ya8vKZRBXdw?t=1143
-         */
         enum VrWaitingMode
         {
-            /// Call WaitGetPoses right after swapping the render targets,
-            /// i.e. at the end of the frame.
-            /// This ensures the next frame has all the controller and head data up to date,
-            /// but unless rendering is very simple, it's likely to run very slow.
             AfterSwap,
-            /// Calls this before SceneManager::updateSceneGraph. This ensures the head data
-            /// is up to date, but your code will probably have read controller location
-            /// and thus is not up to date. You may want to add custom code to correct that in
-            /// the listener. It is not late yet.
             BeforeSceneGraph,
-            /// Calls this after SceneManager::updateSceneGraph. Modifying any SceneNode after this
-            /// call must be followed by a call to Node::_getFullTransformUpdated so that their
-            /// derived transform is actually updated
             AfterSceneGraph,
-            /// Calls this before generating shadow maps.
-            ///
-            /// If the compositor workspace is complex, modifying the camera now may result in
-            /// graphical artifacts if those passes use the camera. How severe depends on what
-            /// you're doing.
-            ///
-            /// See VrWaitingMode::AfterSceneGraph notes, which are relevant.
             BeforeShadowmaps,
-            /// Calls this before Frustum Culling.
-            /// Modifying the camera now may result in a few minor graphical artifacts, as the shadow
-            /// maps have already been processed using the old camera position, thus a few minor
-            /// shadowing artifacts may occur (depends on how much the camera moves/rotates between
-            /// frames).
-            ///
-            /// See VrWaitingMode::BeforeShadowmaps & AfterSceneGraph notes.
-            /// See OpenVRCompositorListener::canSyncCameraTransformImmediately
             BeforeFrustumCulling,
-            /// Calls this after Frustum Culling. Modifying the camera now may result in more
-            /// graphical artifacts, as frustum culling will have been performed using an old camera
-            /// transform (which can be countered by increasing AABB sizes, thus being more
-            /// conservative in culling) and Forward+ has also already collected lights with the wrong
-            /// camera transform.
-            ///
-            /// See VrWaitingMode::BeforeFrustumCulling notes.
-            /// See OpenVRCompositorListener::canSyncCameraTransformImmediately
             AfterFrustumCulling,
             NumVrWaitingModes
         };
@@ -142,9 +74,6 @@ namespace Demo
         Ogre::Real              mLastCamFar;
         bool                    mMustSyncAtEndOfFrame;
 
-        bool initVideoInput();
-        void initImgsTimestamp();
-
         static Ogre::Matrix4 convertSteamVRMatrixToMatrix4( vr::HmdMatrix34_t matPose );
         static Ogre::Matrix4 convertSteamVRMatrixToMatrix4( vr::HmdMatrix44_t matPose );
         void updateHmdTrackingPose(void);
@@ -152,6 +81,9 @@ namespace Demo
         void syncCullCamera(void);
         void syncCamera(void);
         void syncCameraProjection( bool bForceUpdate );
+        void syncCameraProjectionNoHMD( bool bForceUpdate );
+
+        void setupImageData();
 
         //left_left, left_right right_left right_right
         //left_top left_bottom  right_top right_bottom
@@ -169,35 +101,30 @@ namespace Demo
             float c_x;
             float c_y;
         } mCameraConfig[2];
-        //of vr height
-        float mImgScale;
-        //cols/rows
-        float mImgRatio;
         size_t mImgWidthOrig;
         cv::Size mImageResizeSize[2];
-        cv::Mat* mImageOrig[2];
+
         std::mutex mMtxImageResize;
         cv::Mat mImageResize[2];
         Ogre::uint8 *mImageData;
         Ogre::StagingTexture *mStagingTexture;
 
-        int mImageCnt;
+        int mRefreshFrameNum;
+        int mFrameCnt;
         bool calcAlign();
 
         bool fillTexture(void);
-        cv::VideoCapture mCapture;
-        int mCaptureFrameWidth, mCaptureFrameHeight,
-            mCaptureFramePixelFormat;
-        fs::directory_iterator mFileIteratorLeft;
+        bool clearTexture(void);
         bool mWriteTexture;
+        bool mShowMovie;
 
-        InputType mInputType;
     public:
         OpenVRCompositorListener(
             vr::IVRSystem *hmd, vr::IVRCompositor *vrCompositor,
             Ogre::TextureGpu *vrTexture, Ogre::Root *root,
             Ogre::CompositorWorkspace *workspace,
-            Ogre::Camera *camera, Ogre::Camera *cullCamera );
+            Ogre::Camera *camera, Ogre::Camera *cullCamera,
+            int refreshFrameNum );
         virtual ~OpenVRCompositorListener();
 
         virtual bool frameStarted( const Ogre::FrameEvent& evt );
@@ -216,6 +143,11 @@ namespace Demo
 
         InputType getInputType();
         void setInputType(InputType);
+        void showMovie()
+        {
+            mShowMovie = !mShowMovie;
+            mFrameCnt = 3;
+        };
         void triggerWriteTexture()
         {mWriteTexture = true;};
         float getImgScale();

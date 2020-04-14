@@ -21,7 +21,7 @@ namespace Demo
     protected:
         SVRGraphicsSystem      *mGraphicsSystem;
         Ogre::SceneNode     *mLightNodes;
-
+        Ogre::SceneNode     *mSceneNode;
         /// Optional, for controlling the camera with WASD and the mouse
         CameraController    *mCameraController;
 

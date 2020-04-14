@@ -28,6 +28,10 @@
 
 #include "OgreFrameStats.h"
 
+#include "OgreMeshManager.h"
+#include "OgreMeshManager2.h"
+#include "OgreMesh2.h"
+
 #include "OgreHlmsManager.h"
 #include "OgreHlms.h"
 #include "OgreHlmsCompute.h"
@@ -78,14 +82,21 @@ namespace Demo
             mHiddenAreaMeshVr->getSubItem(0)->setRenderQueueSubGroup( 1u );
             sceneManager->getRootSceneNode( Ogre::SCENE_STATIC )->attachObject( mHiddenAreaMeshVr );
         }
-//         Ogre::Rectangle2D *item = 
-//             sceneManager->createRectangle2D(Ogre::SCENE_STATIC);
-//         Ogre::SceneNode *sceneNode =
-//             sceneManager->getRootSceneNode(
-//                 Ogre::SCENE_DYNAMIC )->                                                   createChildSceneNode( Ogre::SCENE_DYNAMIC );
-//         sceneNode->setPosition( 0, -1, 0 );
-//         sceneNode->attachObject( item );
-                Ogre::SceneNode *rootNode = sceneManager->getRootSceneNode();
+
+        Ogre::Item *item = sceneManager->createItem(
+            "Cube_d.mesh",
+            Ogre::ResourceGroupManager::
+            AUTODETECT_RESOURCE_GROUP_NAME,
+            Ogre::SCENE_DYNAMIC );
+
+        mSceneNode = sceneManager->getRootSceneNode( Ogre::SCENE_DYNAMIC )->
+                createChildSceneNode( Ogre::SCENE_DYNAMIC );
+
+        mSceneNode->setPosition( 0, -1, 0 );
+
+        mSceneNode->attachObject( item );
+
+        Ogre::SceneNode *rootNode = sceneManager->getRootSceneNode();
 
         Ogre::Light *light = sceneManager->createLight();
         Ogre::SceneNode *lightNode = rootNode->createChildSceneNode();
@@ -95,9 +106,10 @@ namespace Demo
         light->setDirection( Ogre::Vector3( -1, -1, -1 ).normalisedCopy() );
 
         mLightNodes = lightNode;
-        sceneManager->setAmbientLight( Ogre::ColourValue( 0.3f, 0.5f, 0.7f ) * 0.1f * 0.75f,
-                                       Ogre::ColourValue( 0.6f, 0.45f, 0.3f ) * 0.065f * 0.75f,
-                                       -light->getDirection() + Ogre::Vector3::UNIT_Y * 0.2f );
+        sceneManager->setAmbientLight(
+            Ogre::ColourValue( 0.3f, 0.5f, 0.7f ) * 0.1f * 0.75f,
+            Ogre::ColourValue( 0.6f, 0.45f, 0.3f ) * 0.065f * 0.75f,
+            -light->getDirection() + Ogre::Vector3::UNIT_Y * 0.2f );
         createDebugTextOverlay();
     }
 
@@ -241,27 +253,15 @@ namespace Demo
         {
             mGraphicsSystem->setQuit();
         }
-//         else if(arg.keysym.scancode == SDL_SCANCODE_N)
-//         {
-//             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
-//             ovrListener->toggleNextPict();
-//         }
+        else if(arg.keysym.scancode == SDL_SCANCODE_N)
+        {
+            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
+            ovrListener->showMovie();
+        }
         else if(arg.keysym.scancode == SDL_SCANCODE_M)
         {
             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
             ovrListener->triggerWriteTexture();
-        }
-        else if(arg.keysym.scancode == SDL_SCANCODE_V)
-        {
-            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
-            float imgScale = ovrListener->getImgScale();
-            ovrListener->setImgScale(imgScale - 0.05);
-        }
-        else if(arg.keysym.scancode == SDL_SCANCODE_B)
-        {
-            OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
-            float imgScale = ovrListener->getImgScale();
-            ovrListener->setImgScale(imgScale + 0.05);
         }
         else
         {

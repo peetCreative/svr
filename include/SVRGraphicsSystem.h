@@ -130,7 +130,7 @@ namespace Demo
 
         void _notifyLogicSystem( BaseSystem *logicSystem )      { mLogicSystem = logicSystem; }
 
-        void initialize( InputType inputType, const Ogre::String &windowTitle );
+        void initialize( const Ogre::String &windowTitle );
         void deinitialize(void);
 
         void setImgPtr();
