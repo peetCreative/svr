@@ -50,6 +50,7 @@ namespace Demo
         mLastCamFar( 0 ),
         mMustSyncAtEndOfFrame( false ),
         mImageResizeSize{Size(0,0), Size(0,0)},
+        mCVr{0,0,0,0},
         mFrameCnt(0),
         mRefreshFrameNum(refreshFrameNum),
         mWriteTexture(true),
@@ -93,6 +94,7 @@ namespace Demo
         }
         else
         {
+            LOG << "Sync Camera Projection No HMD" << std::endl;
             syncCameraProjectionNoHMD( true );
         }
         calcAlign();
@@ -193,14 +195,32 @@ namespace Demo
             mLastCamNear = camNear;
             mLastCamFar = camFar;
 
-            mCullCameraOffset = Ogre::Vector3::ZERO;
-
             mVrCullCamera->setNearClipDistance( camNear );
             mVrCullCamera->setFarClipDistance( camFar );
             mVrCullCamera->setFOVy( mCamera->getFOVy() );
         }
     }
 
+    inline void printMatrix4(Ogre::Matrix4 m)
+    {
+        LOG << m[0][0] << " "
+            << m[0][1] << " "
+            << m[0][2] << " "
+            << m[0][3] << " " << std::endl
+            << m[1][0] << " "
+            << m[1][1] << " "
+            << m[1][2] << " "
+            << m[1][3] << " " << std::endl
+            << m[2][0] << " "
+            << m[2][1] << " "
+            << m[2][2] << " "
+            << m[2][3] << " " << std::endl
+            << m[3][0] << " "
+            << m[3][1] << " "
+            << m[3][2] << " "
+            << m[3][3] << " " << std::endl;
+
+    }
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::syncCameraProjection( bool bForceUpdate )
     {
@@ -223,8 +243,16 @@ namespace Demo
                                                                                   camNear, camFar ) );
                 mRenderSystem->_convertOpenVrProjectionMatrix( projectionMatrix[i],
                                                                projectionMatrixRS[i] );
-                mHMD->GetProjectionRaw( eyeIdx, &eyeFrustumExtents[i].x, &eyeFrustumExtents[i].y,
-                                        &eyeFrustumExtents[i].z, &eyeFrustumExtents[i].w );
+                mHMD->GetProjectionRaw(
+                    eyeIdx,
+                    &eyeFrustumExtents[i].x, &eyeFrustumExtents[i].y,
+                    &eyeFrustumExtents[i].z, &eyeFrustumExtents[i].w );
+                LOG<< "eyeToHead"<< std::endl;
+                printMatrix4(eyeToHead[i]);
+                LOG<< "projectionMatrix"<< std::endl;
+                printMatrix4(projectionMatrix[i]);
+                LOG<< "projectionMatrixRS"<< std::endl;
+                printMatrix4(projectionMatrixRS[i]);
             }
 
             mVrData.set( eyeToHead, projectionMatrixRS );
@@ -232,14 +260,21 @@ namespace Demo
             mLastCamFar = camFar;
 
             Ogre::Vector4 cameraCullFrustumExtents;
-            cameraCullFrustumExtents.x = std::min( eyeFrustumExtents[0].x, eyeFrustumExtents[1].x );
-            cameraCullFrustumExtents.y = std::max( eyeFrustumExtents[0].y, eyeFrustumExtents[1].y );
-            cameraCullFrustumExtents.z = std::max( eyeFrustumExtents[0].z, eyeFrustumExtents[1].z );
-            cameraCullFrustumExtents.w = std::min( eyeFrustumExtents[0].w, eyeFrustumExtents[1].w );
+            cameraCullFrustumExtents.x = std::min(
+                eyeFrustumExtents[0].x, eyeFrustumExtents[1].x );
+            cameraCullFrustumExtents.y = std::max(
+                eyeFrustumExtents[0].y, eyeFrustumExtents[1].y );
+            cameraCullFrustumExtents.z = std::max(
+                eyeFrustumExtents[0].z, eyeFrustumExtents[1].z );
+            cameraCullFrustumExtents.w = std::min(
+                eyeFrustumExtents[0].w, eyeFrustumExtents[1].w );
 
-            mVrCullCamera->setFrustumExtents( cameraCullFrustumExtents.x, cameraCullFrustumExtents.y,
-                                              cameraCullFrustumExtents.w, cameraCullFrustumExtents.z,
-                                              Ogre::FET_TAN_HALF_ANGLES );
+            mVrCullCamera->setFrustumExtents(
+                cameraCullFrustumExtents.x,
+                cameraCullFrustumExtents.y,
+                cameraCullFrustumExtents.w,
+                cameraCullFrustumExtents.z,
+                Ogre::FET_TAN_HALF_ANGLES );
 
             const float ipd = mVrData.mLeftToRight.x;
             mCullCameraOffset = Ogre::Vector3::ZERO;
@@ -256,17 +291,9 @@ namespace Demo
         //now we have to know
         size_t vr_width_half = mVrTexture->getWidth()/2;
 
-        //left_left, left_right
-        //right_left right_right
-        //left_top left_bottom
-        //right_top right_bottom
         float tan[4][2];
-
         //leftLeft, rightLeft leftTop rightTop
         size_t align[4];
-        float c_vr[4];
-        float  img_size_resize[4];
-        float  img_middle_resize[4];
         size_t vr_size[4] = {vr_width_half, vr_width_half,
             mVrTexture->getHeight(), mVrTexture->getHeight()};
         float img_size[4] = {
@@ -294,13 +321,21 @@ namespace Demo
         }
         else
         {
+            // left left
                 tan[0][0] = -1.39377;
+            // left right
                 tan[0][1] = 1.23437;
-                tan[1][0] = -1.24354 ;
-                tan[1][1] = 1.39482;
+            // left top
                 tan[2][0] = -1.46653 ;
+            // left bottom
                 tan[2][1] = 1.45802 ;
+            // right left
+                tan[1][0] = -1.24354 ;
+            // right right
+                tan[1][1] = 1.39482;
+            // right top
                 tan[3][0] = -1.47209;
+            // right bottom
                 tan[3][1] = 1.45965;
         }
 /*
@@ -313,41 +348,45 @@ namespace Demo
 
         for (int i = 0; i < 4; i++)
         {
-            c_vr[i] = -tan[i][0] * vr_size[i] / (-tan[i][0] + tan[i][1]);
-            img_size_resize[i] = c_vr[i] * img_size[i] / (f_cam[i] * -tan[i][0]);
-            img_middle_resize[i] = img_size_resize[i] * c_cam[i] / img_size[i]; 
-            float align_f = c_vr[i] - img_middle_resize[i];
+            float c_vr = -tan[i][0] * vr_size[i] / (-tan[i][0] + tan[i][1]);
+            float img_size_resize = c_vr * img_size[i] / (f_cam[i] *-tan[i][0]);
+            float img_middle_resize = img_size_resize * c_cam[i] / img_size[i];
+            float align_f = c_vr - img_middle_resize;
             if (align_f <= 0)
                 return false;
             align[i] = static_cast<size_t>(std::round(align_f));
-            OGRE_ASSERT_MSG(img_size_resize[i] > 0, "img_height_resize smaller than zero");
+            OGRE_ASSERT_MSG(img_size_resize > 0, "img_height_resize smaller than zero");
             if (i < 2) {
-                mImageResizeSize[i%2].width =
-                    static_cast<size_t>(std::round(img_size_resize[i]));
+                mImageResizeSize[i%2].width = static_cast<size_t>(
+                    std::round(img_size_resize));
             } else {
-                mImageResizeSize[i%2].height =
-                    static_cast<size_t>(std::round(img_size_resize[i]));
+                mImageResizeSize[i%2].height = static_cast<size_t>(
+                    std::round(img_size_resize));
             }
+            mCVr[i] = static_cast<size_t>(std::round(c_vr));
+            mImgMiddleResize[i] = static_cast<size_t>(
+                std::round(img_middle_resize));
         }
 
         mImageResize[LEFT] = Mat();
         mImageResize[RIGHT] = Mat();
 
         LOG << "left resize: " << mImageResizeSize[LEFT].width
-            << " " << mImageResizeSize[LEFT].height;
+            << " " << mImageResizeSize[LEFT].height << std::endl;
         LOG << "right resize: " << mImageResizeSize[RIGHT].width 
-            << " " << mImageResizeSize[RIGHT].height;
+            << " " << mImageResizeSize[RIGHT].height << std::endl;
+
         mAlign.leftLeft = align[0];
         mAlign.rightLeft = vr_width_half + align[1];
         mAlign.leftTop = align[2];
         mAlign.rightTop = align[3];
 
-        return true;
 
-//         LOG << "Align leftLeft:" << mAlign.leftLeft << std::endl;
-//         LOG << "Align leftTop:" << mAlign.leftTop << std::endl;
-//         LOG << "Align rightLeft:" << mAlign.rightLeft << std::endl;
-//         LOG << "Align rightTop:" << mAlign.rightTop << std::endl;
+        LOG << "Align leftLeft:" << mAlign.leftLeft << std::endl;
+        LOG << "Align leftTop:" << mAlign.leftTop << std::endl;
+        LOG << "Align rightLeft:" << mAlign.rightLeft << std::endl;
+        LOG << "Align rightTop:" << mAlign.rightTop << std::endl;
+        return true;
     }
     bool OpenVRCompositorListener::fillTexture(void)
     {
@@ -395,6 +434,19 @@ namespace Demo
                     row_cnt += bytesPerRow;
                 }
             }
+        }
+
+        //redline for eye pupilar middle
+        for (size_t i = 0; i < mVrTexture->getHeight(); i++)
+        {
+            mImageData[(bytesPerRow*i) + (mCVr[0] * bytesPerPixel)] = 255;
+            mImageData[(bytesPerRow*i) + (bytesPerRow/2) + (mCVr[1] * bytesPerPixel)+4] = 255;
+        }
+
+        //green line for middle
+        for (size_t i = 0; i < mVrTexture->getHeight()*4; i++)
+        {
+            mImageData[(bytesPerRow/4*i)+1] = 255;
         }
 //         mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
         mVrTexture->_setNextResidencyStatus( GpuResidency::Resident );
@@ -498,69 +550,57 @@ namespace Demo
             mApiTextureType,
             vr::ColorSpace_Gamma
         };
-        if (mWriteTexture) {
-            mVrTexture->writeContentsToFile("texture.bmp", 8, 255);
-            mWriteTexture = false;
+        if (mHMD)
+        {
+            if (mWriteTexture) {
+                mVrTexture->writeContentsToFile("texture.bmp", 8, 255);
+                mWriteTexture = false;
+            }
         }
+
         TextureGpuManager *textureManager =
             mRoot->getRenderSystem()->getTextureGpuManager();
         textureManager->waitForStreamingCompletion();
-
         mVrTexture->waitForData();
-        mVrTexture->getCustomAttribute( Ogre::TextureGpu::msFinalTextureBuffer, &eyeTexture.handle );
+        mVrTexture->getCustomAttribute(
+            Ogre::TextureGpu::msFinalTextureBuffer,
+            &eyeTexture.handle );
 
-        texBounds.uMin = 0;
-        texBounds.uMax = 0.5f;
-        mVrCompositor3D->Submit( vr::Eye_Left, &eyeTexture, &texBounds );
-        texBounds.uMin = 0.5f;
-        texBounds.uMax = 1.0f;
-        mVrCompositor3D->Submit( vr::Eye_Right, &eyeTexture, &texBounds );
+        if (mHMD)
+        {
+            texBounds.uMin = 0;
+            texBounds.uMax = 0.5f;
+            mVrCompositor3D->Submit( vr::Eye_Left, &eyeTexture, &texBounds );
+            texBounds.uMin = 0.5f;
+            texBounds.uMax = 1.0f;
+            mVrCompositor3D->Submit( vr::Eye_Right, &eyeTexture, &texBounds );
+        }
 
         mRenderSystem->flushCommands();
-
-
-//         vr::VREvent_t event;
-//         while( mHMD->PollNextEvent( &event, sizeof(event) ) )
-//         {
-//             if( event.trackedDeviceIndex != vr::k_unTrackedDeviceIndex_Hmd &&
-//                 event.trackedDeviceIndex != vr::k_unTrackedDeviceIndexInvalid )
-//             {
-//                 continue;
-//             }
-//
-//             switch( event.eventType )
-//             {
-//             case vr::VREvent_TrackedDeviceUpdated:
-//             case vr::VREvent_IpdChanged:
-//             case vr::VREvent_ChaperoneDataHasChanged:
-//                 syncCameraProjection( true );
-//                 break;
-//             }
-//         }
 
         return true;
     }
 
-    float OpenVRCompositorListener::getImgScale()
-    {
-        return mImgScale;
-    }
-
-    void OpenVRCompositorListener::setImgScale(float imgScale)
-    {
-        float oldImgScale = mImgScale;
-        mImgScale = imgScale;
-        if (!calcAlign()) {
-            mImgScale = oldImgScale;
-            calcAlign();
-        }
-    }
-
     void OpenVRCompositorListener::setImgPtr(const cv::Mat *left, const cv::Mat *right)
     {
+//         LOG << mImageResizeSize[LEFT].width << std::endl;
+//         LOG << mImageResizeSize[LEFT].height << std::endl;
+//         LOG << mImageResizeSize[RIGHT].width << std::endl;
+//         LOG << mImageResizeSize[RIGHT].height << std::endl;
         mMtxImageResize.lock();
         resize(*left, mImageResize[LEFT], mImageResizeSize[LEFT]);
         resize(*right, mImageResize[RIGHT], mImageResizeSize[RIGHT]);
+
+        circle( mImageResize[LEFT],
+            Point(mImgMiddleResize[0],mImgMiddleResize[2]),
+            5,
+            Scalar( 0, 0, 255 ),
+            -1);
+        circle( mImageResize[RIGHT],
+            Point(mImgMiddleResize[1],mImgMiddleResize[3]),
+            5,
+            Scalar( 0, 0, 255 ),
+            -1);
         mMtxImageResize.unlock();
     }
 

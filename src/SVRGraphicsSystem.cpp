@@ -125,7 +125,6 @@ namespace Demo {
         pluginsPath = mPluginsFolder + "plugins.cfg";
     #endif
     #endif
-
         mRoot = OGRE_NEW Ogre::Root( pluginsPath,
                                      mWriteAccessFolder + "ogre.cfg",
                                      mWriteAccessFolder + "Ogre.log" );
@@ -153,8 +152,8 @@ namespace Demo {
 
         Ogre::ConfigOptionMap& cfgOpts = mRoot->getRenderSystem()->getConfigOptions();
 
-        int width   = 2*1512;
-        int height  = 1680;
+        int width   = 1512;
+        int height  = 1680/2;
 
         Ogre::ConfigOptionMap::iterator opt = cfgOpts.find( "Video Mode" );
         if( opt != cfgOpts.end() )

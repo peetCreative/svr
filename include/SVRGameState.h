@@ -36,6 +36,9 @@ namespace Demo
         virtual void generateDebugText( float timeSinceLast, Ogre::String &outText );
 
         Ogre::Item      *mHiddenAreaMeshVr;
+        Ogre::Item      *mCube;
+        Ogre::uint8     mTransparencyMode;
+        float           mTransparencyValue;
 
     public:
         SVRGameState( const Ogre::String &helpDescription );
@@ -46,6 +49,7 @@ namespace Demo
         virtual void createScene01(void);
 
         virtual void update( float timeSinceLast );
+        void setTransparencyToMaterials(void);
 
         virtual void keyPressed( const SDL_KeyboardEvent &arg );
         virtual void keyReleased( const SDL_KeyboardEvent &arg );

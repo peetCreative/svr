@@ -1,4 +1,3 @@
-
 #include "SVRGameState.h"
 #include "OpenVRCompositorListener.h"
 
@@ -49,7 +48,10 @@ namespace Demo
         mHelpDescription( helpDescription ),
         mDisplayHelpMode( 1 ),
         mNumDisplayHelpModes( 2 ),
-        mDebugText( 0 )
+        mDebugText( 0 ),
+        mCube( nullptr ),
+        mTransparencyMode( 0 ),
+        mTransparencyValue( 0.5 )
 	{
     }
 //-----------------------------------------------------------------------------------
@@ -72,9 +74,10 @@ namespace Demo
         if( bIsHamVrOptEnabled )
         {
             mHiddenAreaMeshVr =
-                    sceneManager->createItem( "HiddenAreaMeshVr.mesh",
-                                              Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME,
-                                              Ogre::SCENE_STATIC );
+                sceneManager->createItem(
+                    "HiddenAreaMeshVr.mesh",
+                    Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME,
+                    Ogre::SCENE_STATIC );
             mHiddenAreaMeshVr->setCastShadows( false );
             mHiddenAreaMeshVr->setRenderQueueGroup( 0u );
             mHiddenAreaMeshVr->getSubItem(0)->setUseIdentityProjection( true );
@@ -83,18 +86,19 @@ namespace Demo
             sceneManager->getRootSceneNode( Ogre::SCENE_STATIC )->attachObject( mHiddenAreaMeshVr );
         }
 
-        Ogre::Item *item = sceneManager->createItem(
+        mCube = sceneManager->createItem(
             "Cube_d.mesh",
             Ogre::ResourceGroupManager::
             AUTODETECT_RESOURCE_GROUP_NAME,
             Ogre::SCENE_DYNAMIC );
 
+        mCube->setVisibilityFlags( 0x000000002 );
         mSceneNode = sceneManager->getRootSceneNode( Ogre::SCENE_DYNAMIC )->
                 createChildSceneNode( Ogre::SCENE_DYNAMIC );
 
-        mSceneNode->setPosition( 0, -1, 0 );
+        mSceneNode->setPosition( 0, 0, 0 );
 
-        mSceneNode->attachObject( item );
+        mSceneNode->attachObject( mCube );
 
         Ogre::SceneNode *rootNode = sceneManager->getRootSceneNode();
 
@@ -194,7 +198,30 @@ namespace Demo
         if( mCameraController )
             mCameraController->update( timeSinceLast );
     }
-	
+    //-----------------------------------------------------------------------------------
+    void SVRGameState::setTransparencyToMaterials(void)
+    {
+        Ogre::HlmsManager *hlmsManager = mGraphicsSystem->getRoot()->getHlmsManager();
+
+        assert( dynamic_cast<Ogre::HlmsPbs*>( hlmsManager->getHlms( Ogre::HLMS_PBS ) ) );
+
+        Ogre::HlmsPbs *hlmsPbs = static_cast<Ogre::HlmsPbs*>( hlmsManager->getHlms(Ogre::HLMS_PBS) );
+
+        Ogre::HlmsPbsDatablock::TransparencyModes mode =
+                static_cast<Ogre::HlmsPbsDatablock::TransparencyModes>( mTransparencyMode );
+
+        if( mTransparencyValue >= 1.0f )
+            mode = Ogre::HlmsPbsDatablock::None;
+
+        if( mTransparencyMode < 1.0f && mode == Ogre::HlmsPbsDatablock::None )
+            mode = Ogre::HlmsPbsDatablock::Transparent;
+
+        Ogre::HlmsPbsDatablock *datablock =
+            static_cast<Ogre::HlmsPbsDatablock*>(
+                hlmsPbs->getDatablock( "Cube" ) );
+
+        datablock->setTransparency( mTransparencyValue, mode );
+    }
     //-----------------------------------------------------------------------------------
         void SVRGameState::keyPressed( const SDL_KeyboardEvent &arg )
     {
@@ -248,6 +275,15 @@ namespace Demo
             Ogre::Hlms *hlms = hlmsManager->getComputeHlms();
             Ogre::GpuProgramManager::getSingleton().clearMicrocodeCache();
             hlms->reloadFrom( hlms->getDataFolder() );
+        }
+        else if( arg.keysym.sym == SDLK_F4 )
+        {
+            Ogre::uint32 visibilityMask = mGraphicsSystem->getSceneManager()->getVisibilityMask();
+            bool showPalette = (visibilityMask & 0x00000002) != 0;
+            showPalette = !showPalette;
+            visibilityMask &= ~0x00000002;
+            visibilityMask |= (Ogre::uint32)(showPalette) << 1;
+            mGraphicsSystem->getSceneManager()->setVisibilityMask( visibilityMask );
         }
         else if(arg.keysym.scancode == SDL_SCANCODE_ESCAPE)
         {

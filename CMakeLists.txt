@@ -56,10 +56,6 @@ add_dir_recursive( src/OgreCommon SOURCES_OGRE)
 add_dir_recursive( include/OgreCommon HEADERS_OGRE)
 add_dir( src SOURCES_BASE)
 add_dir( include HEADERS_BASE)
-if ( BUILD_ROS )
-	add_dir_recursive( src/ros SOURCES_ROS)
-	add_dir_recursive( include/ros HEADERS_ROS)
-endif()
 
 #TODO: make the
 # set(OpenVR_DIR /usr/local/include/openvr/)
@@ -75,11 +71,11 @@ include_directories(${OpenVR_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
 
 if ( BUILD_ROS )
     include_directories("include/OgreCommon")
-    include_directories("include/ros")
+    add_definitions(-DUSE_ROS)
     include_directories("${catkin_INCLUDE_DIRS}")
-    add_library( ROSSVRNodelet
+    add_executable( ROSSVRNode
         ${SOURCES_OGRE} ${SOURCES_ROS} ${SOURCES_BASE})
-    target_link_libraries( ROSSVRNodelet
+    target_link_libraries( ROSSVRNode
         ${catkin_LIBRARIES} ${OGRE_LIBRARIES}
         ${OpenVR_LIBRARIES} ${OpenCV_LIBS} )
 endif()

@@ -7,6 +7,17 @@
 #include "opencv2/opencv.hpp"
 #include <experimental/filesystem>
 
+#ifdef USE_ROS
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximatePolicy;
+typedef message_filters::Synchronizer<ApproximatePolicy> ApproximateSync;
+#endif
+
 namespace fs = std::experimental::filesystem;
 
 #define LEFT 0
@@ -20,6 +31,7 @@ namespace Demo
     class SVRGraphicsSystem;
 
     typedef enum {
+        ROS,
         VIDEO,
         IMG_SERIES,
         IMG_TIMESTAMP
@@ -49,6 +61,7 @@ namespace Demo
             void spin(void);
             const char* getWindowTitle(void);
             bool getQuit();
+            void setQuit();
             bool initVideoInput();
             void updateVideoInput();
             bool initImgSeries();
@@ -73,8 +86,6 @@ namespace Demo
             Ogre::Timer mTimer;
             Ogre::uint64 mStartTime;
 
-            bool mIsCameraInfoInit[2];
-
             double mAccumulator = 1.0 / 60.0;
             double mTimeSinceLast = 1.0 / 60.0;
 
@@ -91,7 +102,30 @@ namespace Demo
             int mCaptureFrameWidth, mCaptureFrameHeight,
                 mCaptureFramePixelFormat;
             fs::directory_iterator mFileIteratorLeft;
+            bool mQuit;
+            bool mIsCameraInfoInit[2];
+#ifdef USE_ROS
+        private:
+            message_filters::Subscriber<sensor_msgs::Image>* mSubImageLeft;
+            message_filters::Subscriber<sensor_msgs::Image>* mSubImageRight;
+            ros::Subscriber mSubCamInfoLeft;
+            ros::Subscriber mSubCamInfoRight;
+            std::shared_ptr<ApproximateSync> mApproximateSync;
+            void newROSCameraInfoCallback(
+                const sensor_msgs::CameraInfo::ConstPtr& input,
+                int leftOrRight);
+        public:
+            void subscribeROSTopics(ros::NodeHandle mNh);
 
+            void newROSImageCallback(
+                const sensor_msgs::Image::ConstPtr& imgLeft,
+                const sensor_msgs::Image::ConstPtr& imgRight
+            );
+            void newROSCameraInfoCallbackLeft(
+                const sensor_msgs::CameraInfo::ConstPtr& input);
+            void newROSCameraInfoCallbackRight(
+                const sensor_msgs::CameraInfo::ConstPtr& input);
+#endif
     };
 }
 

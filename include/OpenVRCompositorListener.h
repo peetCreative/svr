@@ -103,6 +103,8 @@ namespace Demo
         } mCameraConfig[2];
         size_t mImgWidthOrig;
         cv::Size mImageResizeSize[2];
+        int mCVr[4];
+        int mImgMiddleResize[4];
 
         std::mutex mMtxImageResize;
         cv::Mat mImageResize[2];
