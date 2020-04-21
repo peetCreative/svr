@@ -24,7 +24,6 @@
 
 // #include "OgreHlmsDiskCache.h"
 #include "OgreGpuProgramManager.h"
-
 #include "OgreLogManager.h"
 
 //GraphicsSystem
@@ -594,8 +593,9 @@ namespace Demo {
             //Create & Register HlmsPbs
             //Do the same for HlmsPbs:
             Ogre::HlmsPbs::getDefaultPaths( mainFolderPath, libraryFoldersPaths );
-            Ogre::Archive *archivePbs = archiveManager.load( rootHlmsFolder + mainFolderPath,
-                                                             "FileSystem", true );
+            Ogre::Archive *archivePbs = archiveManager.load(
+                rootHlmsFolder + mainFolderPath,
+                "FileSystem", true );
 
             //Get the library archive(s)
             Ogre::ArchiveVec archivePbsLibraryFolders;
@@ -656,7 +656,7 @@ namespace Demo {
         mCamera = mSceneManager->createCamera( "Main Camera" );
 
         // Position it at 500 in Z direction
-        mCamera->setPosition( Ogre::Vector3( 0, 5, 15 ) );
+        mCamera->setPosition( Ogre::Vector3( 0, 1, 1 ) );
         // Look back along -Z
         mCamera->lookAt( Ogre::Vector3( 0, -1, 0 ) );
         mCamera->setNearClipDistance( 0.2f );

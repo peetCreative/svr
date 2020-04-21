@@ -51,32 +51,21 @@ namespace Demo
         mMustSyncAtEndOfFrame( false ),
         mImageResizeSize{Size(0,0), Size(0,0)},
         mCVr{0,0,0,0},
-        mFrameCnt(0),
         mRefreshFrameNum(refreshFrameNum),
+        mFrameCnt(0),
         mWriteTexture(true),
-        mShowMovie(true)
+        mShowMovie(false),
+        mDrawHelpers(false)
     {
         memset( mDevicePose, 0, sizeof( mDevicePose ) );
         memset( &mVrData, 0, sizeof( mVrData ) );
+        memset( &mHmdConfig, 0, sizeof( mHmdConfig ) );
+        mCameraConfig = nullptr;
+        mHmdConfig = nullptr;
         mAlign.leftLeft = 0;
         mAlign.leftTop = 0;
         mAlign.rightLeft = 0;
         mAlign.rightTop = 0;
-
-        //TODO: read the correct camera calibration info
-        //DUMMY CAMERACALIBRATION READ CORRECT ONE
-        mCameraConfig[LEFT].width = 640;
-        mCameraConfig[LEFT].height = 512;
-        mCameraConfig[LEFT].f_x = 534.195;
-        mCameraConfig[LEFT].f_y = 534.095;
-        mCameraConfig[LEFT].c_x = 300.45;
-        mCameraConfig[LEFT].c_y = 250.37;
-        mCameraConfig[RIGHT].width = 640;
-        mCameraConfig[RIGHT].height = 512;
-        mCameraConfig[RIGHT].f_x = 533.915;
-        mCameraConfig[RIGHT].f_y = 533.8;
-        mCameraConfig[RIGHT].c_x = 349.11;
-        mCameraConfig[RIGHT].c_y = 250.825;
 
         if(mHMD)
         {
@@ -91,13 +80,8 @@ namespace Demo
             mHMD->GetProjectionRaw(vr::Eye_Right, &left, &right, &top, &bottom);
             LOG << "right camera tan left and right " << left << " " << right << std::endl;
             LOG << "right camera tan top and bottom " << top << " " << bottom << std::endl;
+            calcAlign();
         }
-        else
-        {
-            LOG << "Sync Camera Projection No HMD" << std::endl;
-            syncCameraProjectionNoHMD( true );
-        }
-        calcAlign();
 
         mRoot->addFrameListener( this );
         mWorkspace->setListener( this );
@@ -179,28 +163,6 @@ namespace Demo
         return matrixObj;
     }
 
-    //-------------------------------------------------------------------------
-    void OpenVRCompositorListener::syncCameraProjectionNoHMD( bool bForceUpdate )
-    {
-        const Ogre::Real camNear = mCamera->getNearClipDistance();
-        const Ogre::Real camFar = mCamera->getFarClipDistance();
-
-        if( mLastCamNear != camNear || mLastCamFar != camFar || bForceUpdate )
-        {
-            Ogre::Matrix4 eyeToHead[2] = { Ogre::Matrix4::IDENTITY, Ogre::Matrix4::IDENTITY };
-            Ogre::Matrix4 projectionMatrixRS[2] = { mCamera->getProjectionMatrixWithRSDepth(),
-                                                    mCamera->getProjectionMatrixWithRSDepth() };
-
-            mVrData.set( eyeToHead, projectionMatrixRS );
-            mLastCamNear = camNear;
-            mLastCamFar = camFar;
-
-            mVrCullCamera->setNearClipDistance( camNear );
-            mVrCullCamera->setFarClipDistance( camFar );
-            mVrCullCamera->setFOVy( mCamera->getFOVy() );
-        }
-    }
-
     inline void printMatrix4(Ogre::Matrix4 m)
     {
         LOG << m[0][0] << " "
@@ -224,6 +186,9 @@ namespace Demo
     //-------------------------------------------------------------------------
     void OpenVRCompositorListener::syncCameraProjection( bool bForceUpdate )
     {
+        if (!mHmdConfig && !mHMD)
+            return;
+
         const Ogre::Real camNear = mCamera->getNearClipDistance();
         const Ogre::Real camFar  = mCamera->getFarClipDistance();
 
@@ -236,17 +201,29 @@ namespace Demo
 
             for( size_t i=0u; i<2u; ++i )
             {
-                vr::EVREye eyeIdx = static_cast<vr::EVREye>( i );
-                eyeToHead[i] = convertSteamVRMatrixToMatrix4( mHMD->GetEyeToHeadTransform( eyeIdx ) );
-                projectionMatrix[i] =
-                        convertSteamVRMatrixToMatrix4( mHMD->GetProjectionMatrix( eyeIdx,
-                                                                                  camNear, camFar ) );
-                mRenderSystem->_convertOpenVrProjectionMatrix( projectionMatrix[i],
-                                                               projectionMatrixRS[i] );
-                mHMD->GetProjectionRaw(
-                    eyeIdx,
-                    &eyeFrustumExtents[i].x, &eyeFrustumExtents[i].y,
-                    &eyeFrustumExtents[i].z, &eyeFrustumExtents[i].w );
+                if (mHMD)
+                {
+                    vr::EVREye eyeIdx = static_cast<vr::EVREye>( i );
+                    eyeToHead[i] = convertSteamVRMatrixToMatrix4(
+                        mHMD->GetEyeToHeadTransform( eyeIdx ) );
+                    projectionMatrix[i] =
+                            convertSteamVRMatrixToMatrix4(
+                                mHMD->GetProjectionMatrix( eyeIdx,
+                                camNear, camFar ) );
+                    mHMD->GetProjectionRaw(
+                        eyeIdx,
+                        &eyeFrustumExtents[i].x, &eyeFrustumExtents[i].y,
+                        &eyeFrustumExtents[i].z, &eyeFrustumExtents[i].w );
+                }
+                else
+                {
+                    eyeToHead[i] = mHmdConfig->eyeToHead[i];
+                    projectionMatrix[i] = mHmdConfig->projectionMatrix[i];
+                    eyeFrustumExtents[i] = mHmdConfig->tan[i];
+                }
+                mRenderSystem->_convertOpenVrProjectionMatrix(
+                    projectionMatrix[i], projectionMatrixRS[i] );
+
                 LOG<< "eyeToHead"<< std::endl;
                 printMatrix4(eyeToHead[i]);
                 LOG<< "projectionMatrix"<< std::endl;
@@ -288,6 +265,8 @@ namespace Demo
 
     bool OpenVRCompositorListener::calcAlign()
     {
+        if(!mCameraConfig || (!mHmdConfig && !mHMD))
+            return false;
         //now we have to know
         size_t vr_width_half = mVrTexture->getWidth()/2;
 
@@ -296,21 +275,21 @@ namespace Demo
         size_t align[4];
         size_t vr_size[4] = {vr_width_half, vr_width_half,
             mVrTexture->getHeight(), mVrTexture->getHeight()};
-        float img_size[4] = {
-            mCameraConfig[LEFT].width,
-            mCameraConfig[RIGHT].width,
-            mCameraConfig[LEFT].height,
-            mCameraConfig[RIGHT].height};
+        int img_size[4] = {
+            mCameraConfig->width[LEFT],
+            mCameraConfig->width[RIGHT],
+            mCameraConfig->height[LEFT],
+            mCameraConfig->height[RIGHT]};
         float f_cam[4] = {
-            mCameraConfig[LEFT].f_x,
-            mCameraConfig[RIGHT].f_x,
-            mCameraConfig[LEFT].f_y,
-            mCameraConfig[RIGHT].f_y};
+            mCameraConfig->f_x[LEFT],
+            mCameraConfig->f_x[RIGHT],
+            mCameraConfig->f_y[LEFT],
+            mCameraConfig->f_y[RIGHT]};
         float c_cam[4] = {
-            mCameraConfig[LEFT].c_x,
-            mCameraConfig[RIGHT].c_x,
-            mCameraConfig[LEFT].c_y,
-            mCameraConfig[RIGHT].c_y};
+            mCameraConfig->c_x[LEFT],
+            mCameraConfig->c_x[RIGHT],
+            mCameraConfig->c_y[LEFT],
+            mCameraConfig->c_y[RIGHT]};
 
         if (mHMD)
         {
@@ -321,22 +300,30 @@ namespace Demo
         }
         else
         {
-            // left left
-                tan[0][0] = -1.39377;
-            // left right
-                tan[0][1] = 1.23437;
-            // left top
-                tan[2][0] = -1.46653 ;
-            // left bottom
-                tan[2][1] = 1.45802 ;
-            // right left
-                tan[1][0] = -1.24354 ;
-            // right right
-                tan[1][1] = 1.39482;
-            // right top
-                tan[3][0] = -1.47209;
-            // right bottom
-                tan[3][1] = 1.45965;
+//             // left left
+//                 tan[0][0] = -1.39377;
+                tan[0][0] = mHmdConfig->tan[LEFT][0];
+//             // left right
+//                 tan[0][1] = 1.23437;
+                tan[0][1] = mHmdConfig->tan[LEFT][1];;
+//             // left top
+//                 tan[2][0] = -1.46653 ;
+                tan[2][0] = mHmdConfig->tan[LEFT][2];;
+//             // left bottom
+//                 tan[2][1] = 1.45802 ;
+                tan[2][1] = mHmdConfig->tan[LEFT][3];;
+//             // right left
+//                 tan[1][0] = -1.24354 ;
+                tan[1][0] = mHmdConfig->tan[RIGHT][0];;
+//             // right right
+//                 tan[1][1] = 1.39482;
+                tan[1][1] = mHmdConfig->tan[RIGHT][1];;
+//             // right top
+//                 tan[3][0] = -1.47209;
+                tan[3][0] = mHmdConfig->tan[RIGHT][2];;
+//             // right bottom
+//                 tan[3][1] = 1.45965;
+                tan[3][1] = mHmdConfig->tan[RIGHT][3];;
         }
 /*
         LOG << "ratio left: " << vr_width_half << " " << mVrTexture->getHeight() << std::endl;
@@ -436,17 +423,20 @@ namespace Demo
             }
         }
 
-        //redline for eye pupilar middle
-        for (size_t i = 0; i < mVrTexture->getHeight(); i++)
+        if (mDrawHelpers)
         {
-            mImageData[(bytesPerRow*i) + (mCVr[0] * bytesPerPixel)] = 255;
-            mImageData[(bytesPerRow*i) + (bytesPerRow/2) + (mCVr[1] * bytesPerPixel)+4] = 255;
-        }
+            //redline for eye pupilar middle
+            for (size_t i = 0; i < mVrTexture->getHeight(); i++)
+            {
+                mImageData[(bytesPerRow*i) + (mCVr[0] * bytesPerPixel)] = 255;
+                mImageData[(bytesPerRow*i) + (bytesPerRow/2) + (mCVr[1] * bytesPerPixel)+4] = 255;
+            }
 
-        //green line for middle
-        for (size_t i = 0; i < mVrTexture->getHeight()*4; i++)
-        {
-            mImageData[(bytesPerRow/4*i)+1] = 255;
+            //green line for middle
+            for (size_t i = 0; i < mVrTexture->getHeight()*4; i++)
+            {
+                mImageData[(bytesPerRow/4*i)+1] = 255;
+            }
         }
 //         mVrTexture->_transitionTo( GpuResidency::Resident, imageData );
         mVrTexture->_setNextResidencyStatus( GpuResidency::Resident );
@@ -591,32 +581,36 @@ namespace Demo
         resize(*left, mImageResize[LEFT], mImageResizeSize[LEFT]);
         resize(*right, mImageResize[RIGHT], mImageResizeSize[RIGHT]);
 
-        circle( mImageResize[LEFT],
-            Point(mImgMiddleResize[0],mImgMiddleResize[2]),
-            5,
-            Scalar( 0, 0, 255 ),
-            -1);
-        circle( mImageResize[RIGHT],
-            Point(mImgMiddleResize[1],mImgMiddleResize[3]),
-            5,
-            Scalar( 0, 0, 255 ),
-            -1);
+        if (mDrawHelpers)
+        {
+            circle( mImageResize[LEFT],
+                Point(mImgMiddleResize[0],mImgMiddleResize[2]),
+                5,
+                Scalar( 0, 0, 255 ),
+                -1);
+            circle( mImageResize[RIGHT],
+                Point(mImgMiddleResize[1],mImgMiddleResize[3]),
+                5,
+                Scalar( 0, 0, 255 ),
+                -1);
+        }
         mMtxImageResize.unlock();
     }
 
-    void OpenVRCompositorListener::setCameraConfig(
-        float width, float height,
-        float f_x, float f_y,
-        float c_x, float c_y,
-        int leftOrRightCam)
+    void OpenVRCompositorListener::setHmdConfig(HmdConfig *hmdConfig)
     {
-        mCameraConfig[leftOrRightCam].width = width;
-        mCameraConfig[leftOrRightCam].height = height;
-        mCameraConfig[leftOrRightCam].f_x = f_x;
-        mCameraConfig[leftOrRightCam].f_y = f_y;
-        mCameraConfig[leftOrRightCam].c_x = c_x;
-        mCameraConfig[leftOrRightCam].c_y = c_y;
+        if (!mHMD)
+        {
+            mHmdConfig = hmdConfig;
+            syncCameraProjection( true);
+        }
+    }
+
+    void OpenVRCompositorListener::setCameraConfig(CameraConfig *cameraConfig)
+    {
+        mCameraConfig = cameraConfig;
         calcAlign();
+        mShowMovie = true;
     }
 
     //-------------------------------------------------------------------------

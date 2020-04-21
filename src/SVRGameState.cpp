@@ -299,6 +299,25 @@ namespace Demo
             OpenVRCompositorListener *ovrListener = mGraphicsSystem->getOvrCompositorListener();
             ovrListener->triggerWriteTexture();
         }
+        else if( arg.keysym.scancode == SDL_SCANCODE_KP_PLUS )
+        {
+            if( mTransparencyValue < 1.0f )
+            {
+                mTransparencyValue += 0.1f;
+                mTransparencyValue = Ogre::min( mTransparencyValue, 1.0f );
+                setTransparencyToMaterials();
+            }
+        }
+        else if( arg.keysym.scancode == SDL_SCANCODE_MINUS ||
+                 arg.keysym.scancode == SDL_SCANCODE_KP_MINUS )
+        {
+            if( mTransparencyValue > 0.0f )
+            {
+                mTransparencyValue -= 0.1f;
+                mTransparencyValue = Ogre::max( mTransparencyValue, 0.0f );
+                setTransparencyToMaterials();
+            }
+        }
         else
         {
             bool handledEvent = false;

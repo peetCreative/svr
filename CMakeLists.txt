@@ -12,6 +12,7 @@ option(BUILD_EXECUTABLE "Build an executable" OFF)
 # CMAKE_DEPENDENT_OPTION(BUILD_EXECUTABLE "Build an executable" OFF
 #                        "NOT BUILD_ROS" ON)
 find_package( OpenCV REQUIRED )
+# find_package( libconfig++ REQUIRED)
 
 if (BUILD_ROS)
     MESSAGE("build ROS")
@@ -40,8 +41,6 @@ include( CMake/Bootstrap.cmake )
 include( CMake/Dependencies/OGRE.cmake )
 
 setupOgre( OGRE_SOURCE, OGRE_BINARIES, OGRE_LIBRARIES, FALSE  )
-
-
 
 macro( add_dir_recursive dir retVal)
 	file( GLOB_RECURSE ${retVal} ${dir}/*.h ${dir}/*.cpp ${dir}/*.c )
@@ -77,7 +76,7 @@ if ( BUILD_ROS )
         ${SOURCES_OGRE} ${SOURCES_ROS} ${SOURCES_BASE})
     target_link_libraries( ROSSVRNode
         ${catkin_LIBRARIES} ${OGRE_LIBRARIES}
-        ${OpenVR_LIBRARIES} ${OpenCV_LIBS} )
+        ${OpenVR_LIBRARIES} ${OpenCV_LIBS} config++)
 endif()
 
 if ( BUILD_EXECUTABLE )
@@ -86,5 +85,5 @@ if ( BUILD_EXECUTABLE )
         ${HEADERS_BASE} ${HEADERS_OGRE}
         ${RESOURCES} )
     target_link_libraries( ${PROJECT_NAME}_bin
-        ${OGRE_LIBRARIES} ${OpenVR_LIBRARIES} ${OpenCV_LIBS} )
+        ${OGRE_LIBRARIES} ${OpenVR_LIBRARIES} ${OpenCV_LIBS} config++ )
 endif()

@@ -3,6 +3,7 @@
 
 #include "OgreWindow.h"
 #include "OgreTimer.h"
+#include "OgreCamera.h"
 
 #include "opencv2/opencv.hpp"
 #include <experimental/filesystem>
@@ -23,45 +24,63 @@ namespace fs = std::experimental::filesystem;
 #define LEFT 0
 #define RIGHT 1
 #define LOG std::cout
+#define LOGEND std::endl
 // #define LOG Ogre::LogManager::getSingleton().stream()
-
 namespace Demo
 {
     class SVRGameState;
     class SVRGraphicsSystem;
 
     typedef enum {
+        NONE,
         ROS,
         VIDEO,
         IMG_SERIES,
         IMG_TIMESTAMP
     } InputType;
-
     typedef struct {
-        std::string videoPath;
+        Ogre::Matrix4 eyeToHead[2];
+        Ogre::Matrix4 projectionMatrix[2];
+        Ogre::Vector4 tan[2];
+    } HmdConfig;
+    typedef struct {
+        int width[2] = {0,0};
+        int height[2] = {0, 0};
+        float f_x[2] = {0, 0};
+        float f_y[2] = {0, 0};
+        float c_x[2] = {0, 0};
+        float c_y[2] = {0, 0};
+    } CameraConfig;
+    typedef struct {
+        std::string path;
         cv::VideoCapture capture;
-        int captureFrameWidth;
-        int captureFrameHeight;
-        int captureFramePixelFormat;
+        int captureFrameWidth = 0;
+        int captureFrameHeight = 0;
+        int captureFramePixelFormat = 0;
     } VideoInput;
     typedef struct {
         int imgCnt;
-        std::string imgPath;
+        std::string path;
     } ImageSeriesInput;
     typedef struct {
         int imgCnt;
-        std::string imgPath;
+        std::string path;
     } ImageTimestampInput;
 
     class SVR {
         public:
-            SVR(bool showConfigDialog, InputType inputType );
+            SVR(bool show_ogre_dialog, InputType inputType,
+                VideoInput *videoInput,
+                ImageSeriesInput *imageSeriesInput,
+                ImageTimestampInput *imageTimestampInput);
             ~SVR();
             bool init();
             void spin(void);
             const char* getWindowTitle(void);
             bool getQuit();
             void setQuit();
+            void initHmdConfig(HmdConfig *hmdConfig);
+            void initCameraConfig(CameraConfig *cameraConfig);
             bool initVideoInput();
             void updateVideoInput();
             bool initImgSeries();
@@ -103,7 +122,7 @@ namespace Demo
                 mCaptureFramePixelFormat;
             fs::directory_iterator mFileIteratorLeft;
             bool mQuit;
-            bool mIsCameraInfoInit[2];
+            bool mIsCameraInfoInit;
 #ifdef USE_ROS
         private:
             message_filters::Subscriber<sensor_msgs::Image>* mSubImageLeft;

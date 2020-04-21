@@ -64,6 +64,7 @@ namespace Demo
         Ogre::Matrix4           mDevicePose[vr::k_unMaxTrackedDeviceCount];
         vr::ETextureType        mApiTextureType;
         Ogre::VrData            mVrData;
+        HmdConfig               *mHmdConfig;
         Ogre::Camera            *mCamera;
         Ogre::Camera            *mVrCullCamera;
         Ogre::Vector3           mCullCameraOffset;
@@ -81,7 +82,6 @@ namespace Demo
         void syncCullCamera(void);
         void syncCamera(void);
         void syncCameraProjection( bool bForceUpdate );
-        void syncCameraProjectionNoHMD( bool bForceUpdate );
 
         void setupImageData();
 
@@ -93,14 +93,7 @@ namespace Demo
             int rightLeft;
             int rightTop;
         } mAlign;
-        struct CameraConfig {
-            float width;
-            float height;
-            float f_x;
-            float f_y;
-            float c_x;
-            float c_y;
-        } mCameraConfig[2];
+        CameraConfig *mCameraConfig;
         size_t mImgWidthOrig;
         cv::Size mImageResizeSize[2];
         int mCVr[4];
@@ -119,6 +112,7 @@ namespace Demo
         bool clearTexture(void);
         bool mWriteTexture;
         bool mShowMovie;
+        bool mDrawHelpers;
 
     public:
         OpenVRCompositorListener(
@@ -155,11 +149,8 @@ namespace Demo
         float getImgScale();
         void setImgScale(float imgScale);
         void setImgPtr(const cv::Mat *left, const cv::Mat *right);
-        void setCameraConfig(
-            float width, float height,
-            float f_x, float f_y,
-            float c_x, float c_y,
-            int leftOrRightCam);
+        void setHmdConfig(HmdConfig *hmdConfig);
+        void setCameraConfig(CameraConfig *cameraConfig);
 
         /** When operating in VrWaitingMode::AfterSceneGraph or later, there's a chance
             graphical artifacts appear if the camera transform is immediately changed after
